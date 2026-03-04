@@ -38,3 +38,5 @@ Route::middleware('auth:sanctum')->group(function () {
     // User management (Admin)
     Route::get('/users', [UserController::class, 'index']);
 });
+
+ 

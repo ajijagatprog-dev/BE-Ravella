@@ -7,6 +7,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
@@ -62,7 +63,7 @@ class ProductController extends Controller
             'stock' => 'required|integer|min:0',
             'weight' => 'required|integer|min:0',
             'category' => 'nullable|string|max:255',
-            'image' => 'nullable|string', // Should upload in a real app
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'is_featured' => 'boolean',
         ]);
 
@@ -76,6 +77,11 @@ class ProductController extends Controller
 
         $data = $validator->validated();
         $data['slug'] = Str::slug($data['name']) . '-' . uniqid();
+
+        if ($request->hasFile('image')) {
+            $imagePath = $request->file('image')->store('products', 'public');
+            $data['image'] = Storage::url($imagePath);
+        }
 
         $product = Product::create($data);
 
@@ -105,7 +111,7 @@ class ProductController extends Controller
             'stock' => 'integer|min:0',
             'weight' => 'integer|min:0',
             'category' => 'nullable|string|max:255',
-            'image' => 'nullable|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'is_featured' => 'boolean',
         ]);
 
@@ -121,6 +127,21 @@ class ProductController extends Controller
 
         if (isset($data['name']) && $data['name'] !== $product->name) {
             $data['slug'] = Str::slug($data['name']) . '-' . uniqid();
+        }
+
+        if ($request->hasFile('image')) {
+            // Delete old image if exists
+            if ($product->image && Str::startsWith($product->image, '/storage/')) {
+                $oldPath = str_replace('/storage/', '', $product->image);
+                Storage::disk('public')->delete($oldPath);
+            }
+            $imagePath = $request->file('image')->store('products', 'public');
+            $data['image'] = Storage::url($imagePath);
+        } else {
+            // Remove image from data if not uploaded so it doesn't try to update DB with empty value (unless explicitly set to null by something else, but file uploads won't be string)
+            if (array_key_exists('image', $data)) {
+                unset($data['image']);
+            }
         }
 
         $product->update($data);
@@ -141,6 +162,11 @@ class ProductController extends Controller
                 'status' => 'error',
                 'message' => 'Product not found'
             ], 404);
+        }
+
+        if ($product->image && Str::startsWith($product->image, '/storage/')) {
+            $oldPath = str_replace('/storage/', '', $product->image);
+            Storage::disk('public')->delete($oldPath);
         }
 
         $product->delete();
