@@ -21,4 +21,15 @@ class Product extends Model
         'image',
         'is_featured',
     ];
+
+    public function getImageAttribute($value)
+    {
+        if ($value) {
+            if (str_starts_with($value, 'http')) {
+                return $value;
+            }
+            return asset($value);
+        }
+        return null;
+    }
 }
