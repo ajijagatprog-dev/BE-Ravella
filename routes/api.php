@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\NewsController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\OrderController;
 
 /*
 |--------------------------------------------------------------------------
@@ -29,6 +31,8 @@ Route::get('/products/{id}', [ProductController::class, 'show']);
 Route::get('/news', [NewsController::class, 'index']);
 Route::get('/news/{id}', [NewsController::class, 'show']);
 
+Route::post('/payments/webhook', [\App\Http\Controllers\Api\PaymentController::class, 'simulateWebhook']);
+
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -46,6 +50,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/news', [NewsController::class, 'store']);
     Route::put('/news/{id}', [NewsController::class, 'update']);
     Route::delete('/news/{id}', [NewsController::class, 'destroy']);
+
+    // Customer Portal
+    Route::get('/customer/profile', [CustomerController::class, 'getProfile']);
+    Route::put('/customer/profile', [CustomerController::class, 'updateProfile']);
+
+    Route::get('/customer/addresses', [CustomerController::class, 'getAddresses']);
+    Route::post('/customer/addresses', [CustomerController::class, 'addAddress']);
+    Route::put('/customer/addresses/{id}', [CustomerController::class, 'updateAddress']);
+    Route::delete('/customer/addresses/{id}', [CustomerController::class, 'deleteAddress']);
+    Route::put('/customer/addresses/{id}/primary', [CustomerController::class, 'setPrimaryAddress']);
+
+    Route::get('/customer/orders', [OrderController::class, 'getUserOrders']);
+    Route::post('/customer/orders', [OrderController::class, 'createOrder']);
+    Route::get('/customer/orders/{order_number}', [OrderController::class, 'getOrderDetail']);
 });
 
  
