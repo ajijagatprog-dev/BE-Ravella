@@ -20,6 +20,17 @@ class Product extends Model
         'category',
         'image',
         'is_featured',
+        'badge',
+        'discount',
+        'rating',
+        'reviews',
+        'features',
+        'specifications',
+    ];
+
+    protected $casts = [
+        'features' => 'array',
+        'specifications' => 'array',
     ];
 
     public function getImageAttribute($value)

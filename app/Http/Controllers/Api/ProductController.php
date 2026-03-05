@@ -65,9 +65,16 @@ class ProductController extends Controller
             'category' => 'nullable|string|max:255',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'is_featured' => 'boolean',
+            'badge' => 'nullable|string|max:255',
+            'discount' => 'nullable|integer|min:0|max:100',
+            'rating' => 'nullable|numeric|min:0',
+            'reviews' => 'nullable|integer|min:0',
+            'features' => 'nullable|string',
+            'specifications' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
+            \Illuminate\Support\Facades\Log::error('Validation failed during product creation: ' . json_encode($validator->errors()));
             return response()->json([
                 'status' => 'error',
                 'message' => 'Validation error',
@@ -81,6 +88,14 @@ class ProductController extends Controller
         if ($request->hasFile('image')) {
             $imagePath = $request->file('image')->store('products', 'public');
             $data['image'] = Storage::url($imagePath);
+        }
+
+        // Handle JSON strings from FormData if they were sent as strings instead of arrays
+        if (isset($data['features']) && is_string($data['features'])) {
+            $data['features'] = json_decode($data['features'], true);
+        }
+        if (isset($data['specifications']) && is_string($data['specifications'])) {
+            $data['specifications'] = json_decode($data['specifications'], true);
         }
 
         $product = Product::create($data);
@@ -113,9 +128,16 @@ class ProductController extends Controller
             'category' => 'nullable|string|max:255',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'is_featured' => 'boolean',
+            'badge' => 'nullable|string|max:255',
+            'discount' => 'nullable|integer|min:0|max:100',
+            'rating' => 'nullable|numeric|min:0',
+            'reviews' => 'nullable|integer|min:0',
+            'features' => 'nullable|string',
+            'specifications' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
+            \Illuminate\Support\Facades\Log::error('Validation failed during product update: ' . json_encode($validator->errors()));
             return response()->json([
                 'status' => 'error',
                 'message' => 'Validation error',
@@ -142,6 +164,14 @@ class ProductController extends Controller
             if (array_key_exists('image', $data)) {
                 unset($data['image']);
             }
+        }
+
+        // Handle JSON strings from FormData if they were sent as strings instead of arrays
+        if (isset($data['features']) && is_string($data['features'])) {
+            $data['features'] = json_decode($data['features'], true);
+        }
+        if (isset($data['specifications']) && is_string($data['specifications'])) {
+            $data['specifications'] = json_decode($data['specifications'], true);
         }
 
         $product->update($data);
