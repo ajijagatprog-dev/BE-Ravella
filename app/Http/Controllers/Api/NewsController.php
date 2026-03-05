@@ -43,6 +43,7 @@ class NewsController extends Controller
             'category' => 'nullable|string|max:255',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'status' => 'nullable|in:draft,published',
+            'published_at' => 'nullable|date',
         ]);
 
         if ($validator->fails()) {
@@ -65,7 +66,9 @@ class NewsController extends Controller
             $data['status'] = 'published';
         }
         
-        if ($data['status'] === 'published') {
+        if (array_key_exists('published_at', $data) && $data['published_at']) {
+            $data['published_at'] = \Carbon\Carbon::parse($data['published_at'])->format('Y-m-d H:i:s');
+        } elseif ($data['status'] === 'published') {
             $data['published_at'] = now();
         }
 
@@ -126,6 +129,7 @@ class NewsController extends Controller
             'category' => 'nullable|string|max:255',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'status' => 'nullable|in:draft,published',
+            'published_at' => 'nullable|date',
         ]);
 
         if ($validator->fails()) {
@@ -143,7 +147,9 @@ class NewsController extends Controller
             $data['slug'] = Str::slug($data['title']) . '-' . uniqid();
         }
 
-        if (isset($data['status']) && $data['status'] !== $news->status) {
+        if (array_key_exists('published_at', $data) && $data['published_at']) {
+            $data['published_at'] = \Carbon\Carbon::parse($data['published_at'])->format('Y-m-d H:i:s');
+        } elseif (isset($data['status']) && $data['status'] !== $news->status) {
             if ($data['status'] === 'published') {
                 $data['published_at'] = now();
             } else {
