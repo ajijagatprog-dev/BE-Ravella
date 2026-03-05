@@ -85,4 +85,46 @@ class OrderController extends Controller
             'data' => $order
         ], 201);
     }
+
+    // --- ADMIN METHODS ---
+
+    // GET: /api/admin/orders
+    public function getAllOrders(Request $request)
+    {
+        // Admin user validation should ideally be middleware, assuming sanctum user is admin
+        $orders = Order::with(['user', 'items.product'])->orderBy('created_at', 'desc')->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $orders
+        ]);
+    }
+
+    // GET: /api/admin/orders/{order_number}
+    public function getAdminOrderDetail(Request $request, $order_number)
+    {
+        $order = Order::with(['user', 'items.product'])->where('order_number', $order_number)->firstOrFail();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $order
+        ]);
+    }
+
+    // PUT: /api/admin/orders/{order_number}/status
+    public function updateOrderStatus(Request $request, $order_number)
+    {
+        $validated = $request->validate([
+            'status' => 'required|string|in:PENDING,PROCESSING,SHIPPED,DELIVERED,CANCELLED'
+        ]);
+
+        $order = Order::where('order_number', $order_number)->firstOrFail();
+        $order->update(['status' => $validated['status']]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Order status updated successfully',
+            'data' => $order
+        ]);
+    }
 }

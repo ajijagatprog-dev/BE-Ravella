@@ -51,6 +51,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/news/{id}', [NewsController::class, 'update']);
     Route::delete('/news/{id}', [NewsController::class, 'destroy']);
 
+    // Order management (Admin)
+    Route::get('/admin/orders', [OrderController::class, 'getAllOrders']);
+    Route::get('/admin/orders/{order_number}', [OrderController::class, 'getAdminOrderDetail']);
+    Route::put('/admin/orders/{order_number}/status', [OrderController::class, 'updateOrderStatus']);
+
     // Customer Portal
     Route::get('/customer/profile', [CustomerController::class, 'getProfile']);
     Route::put('/customer/profile', [CustomerController::class, 'updateProfile']);
