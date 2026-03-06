@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\LoyaltyController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\DashboardController;
 
 /*
 |--------------------------------------------------------------------------
@@ -69,6 +70,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/admin/loyalty/settings', [LoyaltyController::class, 'updateSettings']);
     Route::get('/admin/loyalty/tiers', [LoyaltyController::class, 'getTiers']);
     Route::put('/admin/loyalty/tiers', [LoyaltyController::class, 'updateTiers']);
+
+    // Admin Dashboard
+    Route::get('/admin/dashboard', [DashboardController::class, 'index']);
 
     // Admin Reports
     Route::get('/admin/reports/sales', [ReportController::class, 'salesReport']);
