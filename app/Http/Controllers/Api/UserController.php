@@ -159,4 +159,57 @@ class UserController extends Controller
             'data' => $user
         ]);
     }
+
+    // GET: /api/admin/users/{id}
+    public function getUserDetail($id)
+    {
+        $user = User::findOrFail($id);
+
+        $orders = Order::where('user_id', $id)
+            ->with('items')
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function ($order) {
+                return [
+                    'id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'total_amount' => $order->total_amount,
+                    'status' => $order->status,
+                    'payment_method' => $order->payment_method,
+                    'created_at' => $order->created_at->format('d M Y H:i'),
+                    'items_count' => $order->items->count(),
+                ];
+            });
+
+        $totalSpent = Order::where('user_id', $id)
+            ->where('status', 'DELIVERED')
+            ->sum('total_amount');
+
+        $totalOrders = Order::where('user_id', $id)->count();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone_number' => $user->phone_number,
+                    'role' => $user->role,
+                    'company_name' => $user->company_name,
+                    'npwp' => $user->npwp,
+                    'b2b_status' => $user->b2b_status,
+                    'address' => $user->address,
+                    'loyalty_points' => $user->loyalty_points,
+                    'created_at' => $user->created_at->format('d M Y H:i'),
+                ],
+                'stats' => [
+                    'total_orders' => $totalOrders,
+                    'total_spent' => $totalSpent,
+                ],
+                'recent_orders' => $orders,
+            ]
+        ]);
+    }
 }

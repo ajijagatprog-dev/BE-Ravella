@@ -46,6 +46,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // User management (Admin)
     Route::get('/admin/users/stats', [UserController::class, 'getUserStats']);
     Route::get('/admin/users', [UserController::class, 'index']);
+    Route::get('/admin/users/{id}', [UserController::class, 'getUserDetail']);
     Route::put('/admin/users/{id}', [UserController::class, 'updateUser']);
     Route::get('/users', [UserController::class, 'index']);
 
