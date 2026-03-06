@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\LoyaltyController;
+use App\Http\Controllers\Api\ReportController;
 
 /*
 |--------------------------------------------------------------------------
@@ -61,6 +62,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/orders', [OrderController::class, 'getAllOrders']);
     Route::get('/admin/orders/{order_number}', [OrderController::class, 'getAdminOrderDetail']);
     Route::put('/admin/orders/{order_number}/status', [OrderController::class, 'updateOrderStatus']);
+
+    // Admin Loyalty
+    Route::get('/admin/loyalty', [LoyaltyController::class, 'getAdminLoyaltyData']);
+
+    // Admin Reports
+    Route::get('/admin/reports/sales', [ReportController::class, 'salesReport']);
+    Route::get('/admin/reports/customers', [ReportController::class, 'customerReport']);
+    Route::get('/admin/reports/stock', [ReportController::class, 'stockReport']);
+    Route::get('/admin/reports/transactions', [ReportController::class, 'transactionReport']);
 
     // Customer Portal
     Route::get('/customer/profile', [CustomerController::class, 'getProfile']);

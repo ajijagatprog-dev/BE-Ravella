@@ -5,10 +5,68 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\LoyaltyTransaction;
 use App\Models\Order;
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class LoyaltyController extends Controller
 {
+    // GET: /api/admin/loyalty
+    public function getAdminLoyaltyData()
+    {
+        // Get all non-admin users with loyalty info
+        $users = User::whereIn('role', ['customer', 'b2b'])->get();
+
+        $customers = $users->map(function ($user) {
+            $totalSpent = Order::where('user_id', $user->id)
+                ->where('status', 'DELIVERED')
+                ->sum('total_amount');
+            $tier = $this->calculateTier($totalSpent);
+            $recentTx = LoyaltyTransaction::where('user_id', $user->id)
+                ->orderBy('created_at', 'desc')
+                ->limit(5)
+                ->get()
+                ->map(fn($tx) => [
+                    'id' => $tx->id,
+                    'description' => $tx->description,
+                    'points' => $tx->type === 'earn' ? $tx->points : -$tx->points,
+                    'date' => $tx->created_at->format('d M Y'),
+                    'type' => $tx->type,
+                ]);
+
+            return [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'tier' => $tier['name'],
+                'points' => $user->loyalty_points ?? 0,
+                'total_spent' => $totalSpent,
+                'total_orders' => Order::where('user_id', $user->id)->count(),
+                'member_since' => $user->created_at->format('M Y'),
+                'recent_transactions' => $recentTx,
+            ];
+        });
+
+        // Stats summary
+        $totalPoints = $users->sum('loyalty_points');
+        $totalTransactions = LoyaltyTransaction::count();
+        $pointsEarned = LoyaltyTransaction::where('type', 'earn')->sum('points');
+        $pointsRedeemed = LoyaltyTransaction::where('type', 'redeem')->sum('points');
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'customers' => $customers,
+                'stats' => [
+                    'total_members' => $users->count(),
+                    'total_points_circulating' => $totalPoints,
+                    'total_points_earned' => $pointsEarned,
+                    'total_points_redeemed' => $pointsRedeemed,
+                    'total_transactions' => $totalTransactions,
+                ],
+            ]
+        ]);
+    }
+
     // GET: /api/customer/loyalty
     public function getLoyaltyData(Request $request)
     {
