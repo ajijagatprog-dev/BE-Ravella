@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\LoyaltyController;
 
 /*
 |--------------------------------------------------------------------------
@@ -74,6 +75,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/customer/orders', [OrderController::class, 'getUserOrders']);
     Route::post('/customer/orders', [OrderController::class, 'createOrder']);
     Route::get('/customer/orders/{order_number}', [OrderController::class, 'getOrderDetail']);
+
+    // Customer Loyalty
+    Route::get('/customer/loyalty', [LoyaltyController::class, 'getLoyaltyData']);
 });
 
  

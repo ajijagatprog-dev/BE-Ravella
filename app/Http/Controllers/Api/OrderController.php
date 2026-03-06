@@ -120,7 +120,29 @@ class OrderController extends Controller
         ]);
 
         $order = Order::where('order_number', $order_number)->firstOrFail();
+        $previousStatus = $order->status;
         $order->update(['status' => $validated['status']]);
+
+        // Award loyalty points when order is delivered (1 point per Rp 10,000)
+        if ($validated['status'] === 'DELIVERED' && $previousStatus !== 'DELIVERED') {
+            $pointsToAward = max(1, floor($order->total_amount / 10000));
+            $user = \App\Models\User::find($order->user_id);
+
+            if ($user) {
+                // Record transaction
+                \App\Models\LoyaltyTransaction::create([
+                    'user_id' => $user->id,
+                    'type' => 'earn',
+                    'points' => $pointsToAward,
+                    'description' => "Purchase #{$order->order_number}",
+                    'reference_type' => 'order',
+                    'reference_id' => $order->id,
+                ]);
+
+                // Update user's balance
+                $user->increment('loyalty_points', $pointsToAward);
+            }
+        }
 
         return response()->json([
             'status' => 'success',
