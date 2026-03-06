@@ -14,7 +14,7 @@ return new class extends Migration
             $table->enum('type', ['earn', 'redeem']);
             $table->integer('points');
             $table->string('description');
-            $table->string('reference_type')->nullable(); // 'order', 'reward', 'bonus', 'referral'
+            $table->string('reference_type')->nullable();
             $table->unsignedBigInteger('reference_id')->nullable();
             $table->timestamps();
         });

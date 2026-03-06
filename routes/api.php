@@ -65,6 +65,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Admin Loyalty
     Route::get('/admin/loyalty', [LoyaltyController::class, 'getAdminLoyaltyData']);
+    Route::get('/admin/loyalty/settings', [LoyaltyController::class, 'getSettings']);
+    Route::put('/admin/loyalty/settings', [LoyaltyController::class, 'updateSettings']);
+    Route::get('/admin/loyalty/tiers', [LoyaltyController::class, 'getTiers']);
+    Route::put('/admin/loyalty/tiers', [LoyaltyController::class, 'updateTiers']);
 
     // Admin Reports
     Route::get('/admin/reports/sales', [ReportController::class, 'salesReport']);

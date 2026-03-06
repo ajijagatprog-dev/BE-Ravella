@@ -4,12 +4,77 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\LoyaltyTransaction;
+use App\Models\LoyaltySetting;
 use App\Models\Order;
 use App\Models\User;
 use Illuminate\Http\Request;
 
 class LoyaltyController extends Controller
 {
+    // GET: /api/admin/loyalty/settings
+    public function getSettings()
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'earning_multiplier' => (int) LoyaltySetting::getValue('earning_multiplier', '10'),
+                'redemption_value' => (int) LoyaltySetting::getValue('redemption_value', '5'),
+                'point_expiration' => (int) LoyaltySetting::getValue('point_expiration', '12'),
+            ]
+        ]);
+    }
+
+    // PUT: /api/admin/loyalty/settings
+    public function updateSettings(Request $request)
+    {
+        $validated = $request->validate([
+            'earning_multiplier' => 'sometimes|integer|min:1',
+            'redemption_value' => 'sometimes|integer|min:1',
+            'point_expiration' => 'sometimes|integer|min:1',
+        ]);
+
+        foreach ($validated as $key => $value) {
+            LoyaltySetting::setValue($key, (string) $value);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Loyalty settings updated successfully',
+            'data' => [
+                'earning_multiplier' => (int) LoyaltySetting::getValue('earning_multiplier', '10'),
+                'redemption_value' => (int) LoyaltySetting::getValue('redemption_value', '5'),
+                'point_expiration' => (int) LoyaltySetting::getValue('point_expiration', '12'),
+            ]
+        ]);
+    }
+
+    // GET: /api/admin/loyalty/tiers
+    public function getTiers()
+    {
+        $tiers = json_decode(LoyaltySetting::getValue('tiers', '[]'), true);
+        return response()->json(['status' => 'success', 'data' => $tiers]);
+    }
+
+    // PUT: /api/admin/loyalty/tiers
+    public function updateTiers(Request $request)
+    {
+        $validated = $request->validate([
+            'tiers' => 'required|array|min:1',
+            'tiers.*.name' => 'required|string',
+            'tiers.*.min' => 'required|integer|min:0',
+            'tiers.*.max' => 'nullable|integer',
+            'tiers.*.perks' => 'required|array',
+        ]);
+
+        LoyaltySetting::setValue('tiers', json_encode($validated['tiers']));
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Tiers updated successfully',
+            'data' => $validated['tiers'],
+        ]);
+    }
+
     // GET: /api/admin/loyalty
     public function getAdminLoyaltyData()
     {
@@ -122,49 +187,50 @@ class LoyaltyController extends Controller
 
     private function calculateTier(float $totalSpent): array
     {
-        if ($totalSpent > 15000000) {
-            return [
-                'name' => 'PLATINUM',
-                'benefits' => [
-                    ['label' => 'Free Express Shipping', 'desc' => 'Gratis ongkir di semua pesanan'],
-                    ['label' => 'VIP Early Access', 'desc' => 'Akses koleksi baru 48 jam lebih awal'],
-                    ['label' => 'Personal Consultant', 'desc' => '1x sesi konsultasi per bulan'],
-                    ['label' => 'Birthday Bonus', 'desc' => '1000 poin setiap tahun'],
-                ],
-            ];
+        $tiers = json_decode(LoyaltySetting::getValue('tiers', '[]'), true);
+        // Sort tiers by min spend descending to find highest matching tier
+        usort($tiers, fn($a, $b) => ($b['min'] ?? 0) - ($a['min'] ?? 0));
+
+        foreach ($tiers as $tier) {
+            if ($totalSpent >= ($tier['min'] ?? 0)) {
+                $benefits = array_map(fn($perk) => ['label' => $perk, 'desc' => $perk], $tier['perks'] ?? []);
+                return [
+                    'name' => strtoupper($tier['name']),
+                    'benefits' => $benefits,
+                ];
+            }
         }
-        if ($totalSpent > 5000000) {
-            return [
-                'name' => 'GOLD',
-                'benefits' => [
-                    ['label' => 'Free Standard Shipping', 'desc' => 'Gratis ongkir untuk pesanan > Rp 200.000'],
-                    ['label' => 'Early Access', 'desc' => 'Akses koleksi baru 24 jam lebih awal'],
-                    ['label' => 'Design Consultation', 'desc' => '1x 30 menit sesi per kuartal'],
-                    ['label' => 'Birthday Bonus', 'desc' => '500 poin setiap tahun'],
-                ],
-            ];
-        }
+
         return [
             'name' => 'BASIC',
-            'benefits' => [
-                ['label' => 'Free Shipping', 'desc' => 'Gratis ongkir untuk pesanan > Rp 500.000'],
-                ['label' => 'Member Pricing', 'desc' => 'Akses harga khusus member'],
-                ['label' => 'Birthday Bonus', 'desc' => '200 poin setiap tahun'],
-                ['label' => 'Newsletter Previews', 'desc' => 'Info produk terbaru lebih awal'],
-            ],
+            'benefits' => [['label' => 'Member', 'desc' => 'Basic membership']],
         ];
     }
 
     private function calculateTierProgress(float $totalSpent): array
     {
-        if ($totalSpent > 15000000) {
+        $tiers = json_decode(LoyaltySetting::getValue('tiers', '[]'), true);
+        usort($tiers, fn($a, $b) => ($a['min'] ?? 0) - ($b['min'] ?? 0));
+
+        // Find current tier index
+        $currentIndex = 0;
+        for ($i = count($tiers) - 1; $i >= 0; $i--) {
+            if ($totalSpent >= ($tiers[$i]['min'] ?? 0)) {
+                $currentIndex = $i;
+                break;
+            }
+        }
+
+        // If at highest tier
+        if ($currentIndex >= count($tiers) - 1) {
             return ['percent' => 100, 'next_tier' => 'MAX'];
         }
-        if ($totalSpent > 5000000) {
-            $progress = (($totalSpent - 5000000) / (15000000 - 5000000)) * 100;
-            return ['percent' => round($progress, 0), 'next_tier' => 'Platinum'];
-        }
-        $progress = ($totalSpent / 5000000) * 100;
-        return ['percent' => round($progress, 0), 'next_tier' => 'Gold'];
+
+        $currentMin = $tiers[$currentIndex]['min'] ?? 0;
+        $nextMin = $tiers[$currentIndex + 1]['min'] ?? 0;
+        $nextTierName = $tiers[$currentIndex + 1]['name'] ?? 'Next';
+        $progress = $nextMin > $currentMin ? (($totalSpent - $currentMin) / ($nextMin - $currentMin)) * 100 : 0;
+
+        return ['percent' => round(min($progress, 100), 0), 'next_tier' => $nextTierName];
     }
 }

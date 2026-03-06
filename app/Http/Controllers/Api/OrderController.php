@@ -123,9 +123,10 @@ class OrderController extends Controller
         $previousStatus = $order->status;
         $order->update(['status' => $validated['status']]);
 
-        // Award loyalty points when order is delivered (1 point per Rp 10,000)
+        // Award loyalty points when order is delivered (uses dynamic multiplier)
         if ($validated['status'] === 'DELIVERED' && $previousStatus !== 'DELIVERED') {
-            $pointsToAward = max(1, floor($order->total_amount / 10000));
+            $multiplier = (int) \App\Models\LoyaltySetting::getValue('earning_multiplier', '10');
+            $pointsToAward = max(1, floor($order->total_amount / 10000) * $multiplier);
             $user = \App\Models\User::find($order->user_id);
 
             if ($user) {
