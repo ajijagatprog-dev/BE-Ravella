@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Order;
+use Carbon\Carbon;
 
 class OrderController extends Controller
 {
@@ -125,6 +126,79 @@ class OrderController extends Controller
             'status' => 'success',
             'message' => 'Order status updated successfully',
             'data' => $order
+        ]);
+    }
+
+    // GET: /api/admin/orders/stats
+    public function getOrderStats()
+    {
+        $now = Carbon::now();
+        $startOfMonth = $now->copy()->startOfMonth();
+        $startOfLastMonth = $now->copy()->subMonth()->startOfMonth();
+        $endOfLastMonth = $now->copy()->subMonth()->endOfMonth();
+        $today = $now->copy()->startOfDay();
+        $yesterday = $now->copy()->subDay()->startOfDay();
+        $endOfYesterday = $now->copy()->subDay()->endOfDay();
+
+        // --- Total Pendapatan (Revenue from DELIVERED orders) ---
+        $totalRevenue = Order::where('status', 'DELIVERED')->sum('total_amount');
+
+        $revenueThisMonth = Order::where('status', 'DELIVERED')
+            ->where('created_at', '>=', $startOfMonth)
+            ->sum('total_amount');
+
+        $revenueLastMonth = Order::where('status', 'DELIVERED')
+            ->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])
+            ->sum('total_amount');
+
+        $revenueTrend = $revenueLastMonth > 0
+            ? round((($revenueThisMonth - $revenueLastMonth) / $revenueLastMonth) * 100, 1)
+            : ($revenueThisMonth > 0 ? 100 : 0);
+
+        // --- Pesanan Aktif (Active orders: PENDING, PROCESSING, SHIPPED) ---
+        $activeOrders = Order::whereIn('status', ['PENDING', 'PROCESSING', 'SHIPPED'])->count();
+
+        $activeToday = Order::whereIn('status', ['PENDING', 'PROCESSING', 'SHIPPED'])
+            ->where('created_at', '>=', $today)
+            ->count();
+
+        $activeYesterday = Order::whereIn('status', ['PENDING', 'PROCESSING', 'SHIPPED'])
+            ->whereBetween('created_at', [$yesterday, $endOfYesterday])
+            ->count();
+
+        $activeTrend = $activeYesterday > 0
+            ? round((($activeToday - $activeYesterday) / $activeYesterday) * 100, 1)
+            : ($activeToday > 0 ? 100 : 0);
+
+        // --- Pengiriman Tertunda (Pending shipments = PENDING status) ---
+        $pendingShipments = Order::where('status', 'PENDING')->count();
+
+        $startOfWeek = $now->copy()->startOfWeek(Carbon::MONDAY);
+        $startOfLastWeek = $now->copy()->subWeek()->startOfWeek(Carbon::MONDAY);
+        $endOfLastWeek = $now->copy()->subWeek()->endOfWeek(Carbon::SUNDAY);
+
+        $pendingThisWeek = Order::where('status', 'PENDING')
+            ->where('created_at', '>=', $startOfWeek)
+            ->count();
+
+        $pendingLastWeek = Order::where('status', 'PENDING')
+            ->whereBetween('created_at', [$startOfLastWeek, $endOfLastWeek])
+            ->count();
+
+        $pendingTrend = $pendingLastWeek > 0
+            ? round((($pendingThisWeek - $pendingLastWeek) / $pendingLastWeek) * 100, 1)
+            : ($pendingThisWeek > 0 ? 100 : 0);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'total_revenue' => $totalRevenue,
+                'revenue_trend' => $revenueTrend,
+                'active_orders' => $activeOrders,
+                'active_trend' => $activeTrend,
+                'pending_shipments' => $pendingShipments,
+                'pending_trend' => $pendingTrend,
+            ]
         ]);
     }
 }
