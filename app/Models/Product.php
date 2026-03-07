@@ -15,6 +15,8 @@ class Product extends Model
         'description',
         'price',
         'sale_price',
+        'b2b_price',
+        'b2b_min_order',
         'stock',
         'weight',
         'category',
