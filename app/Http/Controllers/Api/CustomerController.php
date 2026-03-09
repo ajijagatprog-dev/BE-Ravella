@@ -25,7 +25,8 @@ class CustomerController extends Controller
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|email|unique:users,email,'.$user->id,
-            'phone_number' => 'sometimes|string',
+            'phone_number' => 'sometimes|nullable|string',
+            'address' => 'sometimes|nullable|string',
         ]);
 
         $user->update($validated);
