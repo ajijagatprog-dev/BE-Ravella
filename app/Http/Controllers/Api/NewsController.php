@@ -22,6 +22,15 @@ class NewsController extends Controller
             $query->where('status', $status);
         }
 
+        if ($request->has('search')) {
+            $search = $request->query('search');
+            $query->where(function($q) use ($search) {
+                $q->where('title', 'like', '%' . $search . '%')
+                  ->orWhere('content', 'like', '%' . $search . '%')
+                  ->orWhere('excerpt', 'like', '%' . $search . '%');
+            });
+        }
+
         $news = $query->latest()->paginate($limit);
 
         return response()->json([
