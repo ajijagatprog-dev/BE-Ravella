@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\LoyaltyController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\VoucherController;
 
 /*
 |--------------------------------------------------------------------------
@@ -35,6 +36,9 @@ Route::get('/news', [NewsController::class, 'index']);
 Route::get('/news/{id}', [NewsController::class, 'show']);
 
 Route::post('/payments/webhook', [\App\Http\Controllers\Api\PaymentController::class, 'simulateWebhook']);
+
+// Voucher validation (public)
+Route::get('/vouchers/validate', [VoucherController::class, 'check']);
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -79,6 +83,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/reports/customers', [ReportController::class, 'customerReport']);
     Route::get('/admin/reports/stock', [ReportController::class, 'stockReport']);
     Route::get('/admin/reports/transactions', [ReportController::class, 'transactionReport']);
+
+    // Voucher management (Admin)
+    Route::get('/admin/vouchers', [VoucherController::class, 'index']);
+    Route::post('/admin/vouchers', [VoucherController::class, 'store']);
+    Route::put('/admin/vouchers/{id}', [VoucherController::class, 'update']);
+    Route::delete('/admin/vouchers/{id}', [VoucherController::class, 'destroy']);
 
     // Export Routes
     Route::get('/admin/export/users', [ReportController::class, 'exportUsers']);

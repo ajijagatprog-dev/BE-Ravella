@@ -27,6 +27,16 @@ class ProductController extends Controller
             $query->where('name', 'like', '%' . $request->search . '%');
         }
 
+        // Sale filter — products with discount > 0 or sale_price set
+        if ($request->boolean('on_sale')) {
+            $query->where(function ($q) {
+                $q->where('discount', '>', 0)
+                  ->orWhere(function ($q2) {
+                      $q2->whereNotNull('sale_price')->where('sale_price', '>', 0);
+                  });
+            });
+        }
+
         $products = $query->latest()->paginate($request->get('limit', 15));
 
         return response()->json([

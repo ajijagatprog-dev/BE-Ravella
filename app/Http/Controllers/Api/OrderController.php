@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Order;
+use App\Models\Voucher;
 use Carbon\Carbon;
 
 class OrderController extends Controller
@@ -43,25 +44,41 @@ class OrderController extends Controller
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.price' => 'required|numeric',
+            'voucher_code' => 'nullable|string',
         ]);
 
         // Get shipping address details to snapshot
         $address = $user->addresses()->where('id', $validated['shipping_address_id'])->firstOrFail();
 
-        $totalAmount = 0;
+        $subtotal = 0;
         foreach ($validated['items'] as $item) {
-            $totalAmount += $item['price'] * $item['quantity'];
+            $subtotal += $item['price'] * $item['quantity'];
+        }
+
+        // Apply voucher discount if provided
+        $discountAmount = 0;
+        $appliedVoucherCode = null;
+        if (!empty($validated['voucher_code'])) {
+            $voucher = Voucher::where('code', strtoupper(trim($validated['voucher_code'])))->first();
+            if ($voucher && $voucher->isValid() && $subtotal >= (float) $voucher->min_purchase) {
+                $discountAmount = $voucher->calculateDiscount($subtotal);
+                $appliedVoucherCode = $voucher->code;
+                $voucher->increment('used_count');
+            }
         }
 
         // Add shipping cost (Free if > 500.000)
-        $shippingFee = $totalAmount > 500000 ? 0 : 25000;
-        $totalAmount += $shippingFee;
+        $shippingFee = $subtotal > 500000 ? 0 : 25000;
+        $totalAmount = $subtotal - $discountAmount + $shippingFee;
+        $totalAmount = max(0, $totalAmount);
 
         $order = $user->orders()->create([
             'order_number' => 'RH-' . strtoupper(uniqid()),
             'total_amount' => $totalAmount,
             'status' => 'PENDING',
             'payment_method' => $validated['payment_method'],
+            'voucher_code' => $appliedVoucherCode,
+            'discount_amount' => $discountAmount,
             'shipping_address' => json_encode([
                 'recipient_name' => $address->recipient_name,
                 'phone_number' => $address->phone_number,
