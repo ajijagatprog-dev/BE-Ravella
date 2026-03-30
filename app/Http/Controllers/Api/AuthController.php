@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\B2bRegistrationAdminMail;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
@@ -81,6 +84,14 @@ class AuthController extends Controller
             'address' => $request->address,
             'b2b_status' => 'pending', // Requires admin approval
         ]);
+
+        // Send notification email to admin about new B2B registration
+        try {
+            $adminEmail = config('mail.admin_email');
+            Mail::to($adminEmail)->send(new B2bRegistrationAdminMail($user));
+        } catch (\Exception $e) {
+            Log::error('Failed to send B2B registration admin email: ' . $e->getMessage());
+        }
 
         return response()->json([
             'status' => 'success',

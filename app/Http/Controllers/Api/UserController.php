@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Mail\B2bStatusUpdateMail;
 use App\Models\Order;
-use Illuminate\Http\Request;
+use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class UserController extends Controller
 {
@@ -152,6 +155,15 @@ class UserController extends Controller
         ]);
 
         $user->update($validated);
+
+        // Send email notification to B2B user when status changes to approved or rejected
+        if (isset($validated['b2b_status']) && in_array($validated['b2b_status'], ['approved', 'rejected'])) {
+            try {
+                Mail::to($user->email)->send(new B2bStatusUpdateMail($user, $validated['b2b_status']));
+            } catch (\Exception $e) {
+                Log::error('Failed to send B2B status update email to ' . $user->email . ': ' . $e->getMessage());
+            }
+        }
 
         return response()->json([
             'status' => 'success',

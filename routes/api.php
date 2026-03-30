@@ -80,6 +80,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/reports/stock', [ReportController::class, 'stockReport']);
     Route::get('/admin/reports/transactions', [ReportController::class, 'transactionReport']);
 
+    // Export Routes
+    Route::get('/admin/export/users', [ReportController::class, 'exportUsers']);
+    Route::get('/admin/export/orders', [ReportController::class, 'exportOrders']);
+    Route::get('/admin/export/products', [ReportController::class, 'exportProducts']);
+    Route::get('/customer/export/orders', [ReportController::class, 'exportOrders']);
+
     // Customer Portal
     Route::get('/customer/profile', [CustomerController::class, 'getProfile']);
     Route::put('/customer/profile', [CustomerController::class, 'updateProfile']);

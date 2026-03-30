@@ -9,8 +9,43 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
+use App\Exports\UsersExport;
+use App\Exports\OrdersExport;
+use App\Exports\ProductsExport;
+use Maatwebsite\Excel\Facades\Excel;
+
 class ReportController extends Controller
 {
+    // Export All Users (Admin User Management)
+    public function exportUsers()
+    {
+        return Excel::download(new UsersExport, 'users_database_' . now()->format('Y-m-d') . '.xlsx');
+    }
+
+    // Export All Orders (Admin Dashboard / Reports / B2B)
+    public function exportOrders(Request $request)
+    {
+        $user = $request->user();
+        $userId = null;
+
+        // If not admin, force export only their own orders
+        if ($user->role !== 'admin') {
+            $userId = $user->id;
+        } else {
+            // Admin can specify user_id to filter or none for all
+            $userId = $request->query('user_id');
+        }
+
+        $fileName = $userId ? 'orders_report_' : 'all_orders_';
+        return Excel::download(new OrdersExport($userId), $fileName . now()->format('Y-m-d') . '.xlsx');
+    }
+
+    // Export All Products (Stock Report)
+    public function exportProducts()
+    {
+        return Excel::download(new ProductsExport, 'products_stock_' . now()->format('Y-m-d') . '.xlsx');
+    }
+
     // GET: /api/admin/reports/sales
     public function salesReport(Request $request)
     {

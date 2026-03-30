@@ -114,6 +114,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Admin Notification Email
+    |--------------------------------------------------------------------------
+    |
+    | This email address will receive notifications when new B2B accounts
+    | are registered and are pending admin review/approval.
+    |
+    */
+
+    'admin_email' => env('ADMIN_NOTIFICATION_EMAIL', 'admin@ravella.com'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Markdown Mail Settings
     |--------------------------------------------------------------------------
     |
