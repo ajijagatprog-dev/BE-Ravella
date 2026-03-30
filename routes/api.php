@@ -38,6 +38,7 @@ Route::get('/news/{id}', [NewsController::class, 'show']);
 Route::post('/payments/webhook', [\App\Http\Controllers\Api\PaymentController::class, 'simulateWebhook']);
 
 // Voucher validation (public)
+Route::get('/vouchers/active', [VoucherController::class, 'active']);
 Route::get('/vouchers/validate', [VoucherController::class, 'check']);
 
 // Protected routes

@@ -12,6 +12,26 @@ class VoucherController extends Controller
     // ── PUBLIC ─────────────────────────────────────────
 
     /**
+     * GET /api/vouchers/active
+     * Retrieve a list of active vouchers for the public display.
+     */
+    public function active()
+    {
+        $vouchers = Voucher::where('is_active', true)
+            ->where(function ($query) {
+                $query->whereNull('expires_at')
+                      ->orWhere('expires_at', '>=', now());
+            })
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $vouchers
+        ]);
+    }
+
+    /**
      * GET /api/vouchers/validate?code=xxx&subtotal=xxx
      * Validate a voucher code and return the discount amount.
      */
