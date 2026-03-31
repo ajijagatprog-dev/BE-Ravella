@@ -21,6 +21,7 @@ class Product extends Model
         'weight',
         'category',
         'image',
+        'video_url',
         'is_featured',
         'badge',
         'discount',
@@ -49,5 +50,10 @@ class Product extends Model
     public function orderItems()
     {
         return $this->hasMany(OrderItem::class, 'product_id');
+    }
+
+    public function media()
+    {
+        return $this->hasMany(ProductMedia::class)->orderBy('sort_order');
     }
 }
