@@ -16,7 +16,11 @@ class Order extends Model
         'status',
         'payment_method',
         'shipping_address',
-        'payment_token'
+        'payment_token',
+        'voucher_code',
+        'discount_amount',
+        'courier',
+        'tracking_number'
     ];
 
     public function user()

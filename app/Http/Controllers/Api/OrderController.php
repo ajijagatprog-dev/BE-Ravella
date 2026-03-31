@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\Voucher;
 use Carbon\Carbon;
+use App\Services\TrackingService;
 
 class OrderController extends Controller
 {
@@ -133,12 +134,28 @@ class OrderController extends Controller
     public function updateOrderStatus(Request $request, $order_number)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:PENDING,PROCESSING,SHIPPED,DELIVERED,CANCELLED'
+            'status' => 'required|string|in:PENDING,PROCESSING,SHIPPED,DELIVERED,CANCELLED',
+            'courier' => 'nullable|string',
+            'tracking_number' => 'nullable|string',
         ]);
 
         $order = Order::where('order_number', $order_number)->firstOrFail();
         $previousStatus = $order->status;
-        $order->update(['status' => $validated['status']]);
+
+        // Auto-update status to SHIPPED if tracking number is newly provided and state is processing or pending
+        $newStatus = $validated['status'];
+        if (!empty($validated['tracking_number']) && in_array($previousStatus, ['PENDING', 'PROCESSING'])) {
+             // Automasi: jika diinput resi, otomatis status berubah jadi SHIPPED
+             if (!empty($validated['courier'])) {
+                 $newStatus = 'SHIPPED';
+             }
+        }
+
+        $order->update([
+            'status' => $newStatus,
+            'courier' => $validated['courier'] ?? $order->courier,
+            'tracking_number' => $validated['tracking_number'] ?? $order->tracking_number,
+        ]);
 
         // Award loyalty points when order is delivered (uses dynamic multiplier)
         if ($validated['status'] === 'DELIVERED' && $previousStatus !== 'DELIVERED') {
@@ -166,6 +183,32 @@ class OrderController extends Controller
             'status' => 'success',
             'message' => 'Order status updated successfully',
             'data' => $order
+        ]);
+    }
+
+    // GET: /api/customer/orders/{order_number}/tracking
+    public function trackOrder(Request $request, $order_number, TrackingService $trackingService)
+    {
+        $order = Order::where('order_number', $order_number)->firstOrFail();
+
+        // Ensure user owns the order, unless admin
+        if ($request->user() && $request->user()->id !== $order->user_id && $request->user()->role !== 'admin') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if (!$order->tracking_number || !$order->courier) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Resi belum tersedia untuk pesanan ini.'
+            ], 404);
+        }
+
+        $trackingData = $trackingService->getTrackingInfo($order->tracking_number, $order->courier);
+
+        return response()->json([
+            'status' => $trackingData['success'] ? 'success' : 'error',
+            'message' => $trackingData['message'] ?? 'Berhasil melacak resi',
+            'data' => $trackingData['data'] ?? null
         ]);
     }
 

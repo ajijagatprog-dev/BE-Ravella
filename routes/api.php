@@ -110,6 +110,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/customer/orders', [OrderController::class, 'getUserOrders']);
     Route::post('/customer/orders', [OrderController::class, 'createOrder']);
     Route::get('/customer/orders/{order_number}', [OrderController::class, 'getOrderDetail']);
+    Route::get('/customer/orders/{order_number}/tracking', [OrderController::class, 'trackOrder']);
 
     // Customer Loyalty
     Route::get('/customer/loyalty', [LoyaltyController::class, 'getLoyaltyData']);
