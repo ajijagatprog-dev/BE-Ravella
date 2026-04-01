@@ -1,0 +1,6 @@
+[Wed Apr  1 10:36:33 2026] PHP Warning:  PHP Startup: Unable to load dynamic library 'swoole' (tried: /usr/lib/php/20230831/swoole (/usr/lib/php/20230831/swoole: cannot open shared object file: No such file or directory), /usr/lib/php/20230831/swoole.so (/usr/lib/php/20230831/swoole.so: cannot open shared object file: No such file or directory)) in Unknown on line 0
+[Wed Apr  1 10:36:33 2026] PHP 8.3.27 Development Server (http://127.0.0.1:8083) started
+[Wed Apr  1 10:36:36 2026] 127.0.0.1:45882 Accepted
+[Wed Apr  1 10:36:36 2026] PHP Warning:  Unknown: Failed to open stream: No such file or directory in Unknown on line 0
+[Wed Apr  1 10:36:36 2026] PHP Fatal error:  Failed opening required 'server.php' (include_path='.:/usr/share/php') in Unknown on line 0
+[Wed Apr  1 10:36:36 2026] 127.0.0.1:45882 Closing

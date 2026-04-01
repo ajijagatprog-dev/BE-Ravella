@@ -1,6 +1,13 @@
 #!/usr/bin/env php
 <?php
 
+// Force PHP to read configuration from .php.d specifically for Laravel Artisan and built-in serve
+$existingScanDir = getenv('PHP_INI_SCAN_DIR');
+$newScanDir = empty($existingScanDir) ? __DIR__ . '/.php.d:' : __DIR__ . '/.php.d:' . $existingScanDir;
+putenv('PHP_INI_SCAN_DIR=' . $newScanDir);
+$_ENV['PHP_INI_SCAN_DIR'] = $newScanDir;
+$_SERVER['PHP_INI_SCAN_DIR'] = $newScanDir;
+
 define('LARAVEL_START', microtime(true));
 
 /*
@@ -29,6 +36,10 @@ $app = require_once __DIR__.'/bootstrap/app.php';
 | or another output device for the developers. Here goes nothing!
 |
 */
+
+if (class_exists(\Illuminate\Foundation\Console\ServeCommand::class)) {
+    \Illuminate\Foundation\Console\ServeCommand::$passthroughVariables[] = 'PHP_INI_SCAN_DIR';
+}
 
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 
