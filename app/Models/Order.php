@@ -17,10 +17,18 @@ class Order extends Model
         'payment_method',
         'shipping_address',
         'payment_token',
+        'xendit_invoice_id',
+        'payment_url',
+        'payment_channel',
+        'paid_at',
         'voucher_code',
         'discount_amount',
         'courier',
         'tracking_number'
+    ];
+
+    protected $casts = [
+        'paid_at' => 'datetime',
     ];
 
     public function user()

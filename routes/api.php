@@ -37,6 +37,12 @@ Route::get('/news/{id}', [NewsController::class, 'show']);
 
 Route::post('/payments/webhook', [\App\Http\Controllers\Api\PaymentController::class, 'simulateWebhook']);
 
+// Xendit Webhook (public - no auth required, Xendit sends POST here)
+Route::post('/payments/xendit/webhook', [\App\Http\Controllers\Api\PaymentController::class, 'handleXenditWebhook']);
+
+// Payment status check (public for redirect pages)
+Route::get('/payments/status/{order_number}', [\App\Http\Controllers\Api\PaymentController::class, 'getPaymentStatus']);
+
 // Voucher validation (public)
 Route::get('/vouchers/active', [VoucherController::class, 'active']);
 Route::get('/vouchers/validate', [VoucherController::class, 'check']);

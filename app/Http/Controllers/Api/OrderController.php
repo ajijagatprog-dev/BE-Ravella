@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Voucher;
 use Carbon\Carbon;
 use App\Services\TrackingService;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
@@ -98,11 +99,76 @@ class OrderController extends Controller
             ]);
         }
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Order created successfully',
-            'data' => $order
-        ], 201);
+        // --- Create Xendit Invoice ---
+        try {
+            $apiInstance = new \Xendit\Invoice\InvoiceApi();
+            $apiInstance->setApiKey(env('XENDIT_API_KEY'));
+
+            // Build item details for Xendit
+            $xenditItems = [];
+            foreach ($order->items()->with('product')->get() as $orderItem) {
+                $xenditItems[] = new \Xendit\Invoice\InvoiceItem([
+                    'name' => $orderItem->product->name ?? 'Product',
+                    'quantity' => $orderItem->quantity,
+                    'price' => (float) $orderItem->price,
+                ]);
+            }
+
+            $createInvoiceRequest = new \Xendit\Invoice\CreateInvoiceRequest([
+                'external_id' => $order->order_number,
+                'amount' => (float) $order->total_amount,
+                'payer_email' => $user->email,
+                'description' => 'Pembayaran pesanan ' . $order->order_number . ' - Ravella',
+                'invoice_duration' => 86400, // 24 hours
+                'currency' => 'IDR',
+                'items' => $xenditItems,
+                'success_redirect_url' => env('APP_URL', 'http://localhost:3000') . '/payment/success?order=' . $order->order_number,
+                'failure_redirect_url' => env('APP_URL', 'http://localhost:3000') . '/payment/failed?order=' . $order->order_number,
+                'metadata' => [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                ],
+            ]);
+
+            $invoice = $apiInstance->createInvoice($createInvoiceRequest);
+
+            // Save Xendit data to order
+            $order->update([
+                'xendit_invoice_id' => $invoice->getId(),
+                'payment_url' => $invoice->getInvoiceUrl(),
+            ]);
+
+            Log::info("Xendit Invoice created for order: {$order->order_number}, Invoice ID: {$invoice->getId()}");
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Order created successfully',
+                'data' => $order->fresh(),
+                'payment_url' => $invoice->getInvoiceUrl(),
+            ], 201);
+
+        } catch (\Xendit\XenditSdkException $e) {
+            Log::error("Xendit Invoice creation failed for order: {$order->order_number}. Error: " . $e->getMessage());
+
+            // Order was created but payment failed — return order with error info
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Order created but payment gateway error. Please retry payment.',
+                'data' => $order,
+                'payment_url' => null,
+                'payment_error' => $e->getMessage(),
+            ], 201);
+        } catch (\Exception $e) {
+            Log::error("Unexpected error creating Xendit Invoice: " . $e->getMessage());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Order created but payment gateway unavailable.',
+                'data' => $order,
+                'payment_url' => null,
+                'payment_error' => $e->getMessage(),
+            ], 201);
+        }
     }
 
     // --- ADMIN METHODS ---
