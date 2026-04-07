@@ -122,8 +122,8 @@ class OrderController extends Controller
                 'invoice_duration' => 86400, // 24 hours
                 'currency' => 'IDR',
                 'items' => $xenditItems,
-                'success_redirect_url' => env('APP_URL', 'http://localhost:3000') . '/payment/success?order=' . $order->order_number,
-                'failure_redirect_url' => env('APP_URL', 'http://localhost:3000') . '/payment/failed?order=' . $order->order_number,
+                'success_redirect_url' => env('FRONTEND_URL', 'http://localhost:3000') . '/payment/success?order=' . $order->order_number,
+                'failure_redirect_url' => env('FRONTEND_URL', 'http://localhost:3000') . '/payment/failed?order=' . $order->order_number,
                 'metadata' => [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
