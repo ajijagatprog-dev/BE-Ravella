@@ -60,9 +60,43 @@ class RajaOngkirController extends Controller
             ], $response->status());
         }
 
+        $body = $response->json();
         return response()->json([
             'success' => true,
-            'data'    => $response->json()['data'] ?? [],
+            'data'    => $body['data'] ?? [],
+        ]);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // GET /api/rajaongkir/search-destination?search=xxx
+    // Mencari destinasi (kecamatan/kota) untuk autocomplete alamat
+    // Gunakan endpoint ini menggantikan /cities & /subdistricts
+    // ─────────────────────────────────────────────────────────────
+    public function searchDestination(Request $request)
+    {
+        $search = $request->query('search', '');
+
+        if (strlen($search) < 3) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        $response = Http::withHeaders($this->costHeaders())
+            ->get("{$this->baseUrl}/destination/domestic-destination", [
+                'search' => $search,
+            ]);
+
+        if (!$response->successful()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mencari destinasi.',
+                'error'   => $response->json(),
+            ], $response->status());
+        }
+
+        $body = $response->json();
+        return response()->json([
+            'success' => true,
+            'data'    => $body['data'] ?? [],
         ]);
     }
 
@@ -134,7 +168,7 @@ class RajaOngkirController extends Controller
     // ─────────────────────────────────────────────────────────────
     public function checkCost(Request $request)
     {
-        $request->validate([
+        $request->validate([ 
             'origin'      => 'required',
             'destination' => 'required',
             'weight'      => 'required|numeric|min:1',
@@ -142,7 +176,8 @@ class RajaOngkirController extends Controller
         ]);
 
         $response = Http::withHeaders($this->costHeaders())
-            ->post("{$this->baseUrl}/cost", [
+            ->asForm()
+            ->post("{$this->baseUrl}/calculate/domestic-cost", [
                 'origin'      => $request->origin,
                 'destination' => $request->destination,
                 'weight'      => $request->weight,
@@ -157,9 +192,10 @@ class RajaOngkirController extends Controller
             ], $response->status());
         }
 
+        $body = $response->json();
         return response()->json([
             'success' => true,
-            'data'    => $response->json()['data'] ?? [],
+            'data'    => $body['data'] ?? [],
         ]);
     }
 

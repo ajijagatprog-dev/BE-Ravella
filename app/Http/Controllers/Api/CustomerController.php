@@ -53,14 +53,19 @@ class CustomerController extends Controller
     {
         $user = $request->user();
         $validated = $request->validate([
-            'label' => 'required|string',
-            'recipient_name' => 'required|string',
-            'phone_number' => 'required|string',
-            'full_address' => 'required|string',
-            'city' => 'required|string',
-            'province' => 'required|string',
-            'postal_code' => 'required|string',
-            'is_primary' => 'boolean'
+            'label'            => 'required|string',
+            'recipient_name'   => 'required|string',
+            'phone_number'     => 'required|string',
+            'full_address'     => 'required|string',
+            'city'             => 'required|string',
+            'province'         => 'required|string',
+            'postal_code'      => 'required|string',
+            'is_primary'       => 'boolean',
+            // RajaOngkir IDs (opsional, tapi dibutuhkan untuk cek ongkir)
+            'province_id'      => 'nullable|integer',
+            'city_id'          => 'nullable|integer',
+            'subdistrict_id'   => 'nullable|integer',
+            'subdistrict_name' => 'nullable|string',
         ]);
 
         if (empty($user->addresses) || $request->is_primary) {
@@ -84,14 +89,19 @@ class CustomerController extends Controller
         $address = $user->addresses()->findOrFail($id);
         
         $validated = $request->validate([
-            'label' => 'sometimes|string',
-            'recipient_name' => 'sometimes|string',
-            'phone_number' => 'sometimes|string',
-            'full_address' => 'sometimes|string',
-            'city' => 'sometimes|string',
-            'province' => 'sometimes|string',
-            'postal_code' => 'sometimes|string',
-            'is_primary' => 'boolean'
+            'label'            => 'sometimes|string',
+            'recipient_name'   => 'sometimes|string',
+            'phone_number'     => 'sometimes|string',
+            'full_address'     => 'sometimes|string',
+            'city'             => 'sometimes|string',
+            'province'         => 'sometimes|string',
+            'postal_code'      => 'sometimes|string',
+            'is_primary'       => 'boolean',
+            // RajaOngkir IDs
+            'province_id'      => 'nullable|integer',
+            'city_id'          => 'nullable|integer',
+            'subdistrict_id'   => 'nullable|integer',
+            'subdistrict_name' => 'nullable|string',
         ]);
 
         if (isset($validated['is_primary']) && $validated['is_primary']) {

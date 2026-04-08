@@ -19,6 +19,11 @@ class Address extends Model
         'city',
         'province',
         'postal_code',
+        // RajaOngkir IDs — untuk kalkulasi ongkir real-time
+        'province_id',
+        'city_id',
+        'subdistrict_id',
+        'subdistrict_name',
     ];
 
     public function user()

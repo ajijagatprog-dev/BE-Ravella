@@ -53,10 +53,11 @@ Route::get('/vouchers/validate', [VoucherController::class, 'check']);
 // Tidak memerlukan auth karena dipakai saat checkout (kalkulasi ongkir)
 // ─────────────────────────────────────────────────────────────────────────────
 Route::prefix('rajaongkir')->group(function () {
-    Route::get('/provinces',    [RajaOngkirController::class, 'getProvinces']);
-    Route::get('/cities',       [RajaOngkirController::class, 'getCities']);
-    Route::get('/subdistricts', [RajaOngkirController::class, 'getSubdistricts']);
-    Route::post('/cost',        [RajaOngkirController::class, 'checkCost']);
+    Route::get('/provinces',          [RajaOngkirController::class, 'getProvinces']);
+    Route::get('/cities',             [RajaOngkirController::class, 'getCities']);
+    Route::get('/subdistricts',       [RajaOngkirController::class, 'getSubdistricts']);
+    Route::get('/search-destination', [RajaOngkirController::class, 'searchDestination']);
+    Route::post('/cost',              [RajaOngkirController::class, 'checkCost']);
 });
 
 // Protected routes
