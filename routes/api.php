@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\LoyaltyController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\VoucherController;
+use App\Http\Controllers\Api\RajaOngkirController;
 
 /*
 |--------------------------------------------------------------------------
@@ -46,6 +47,17 @@ Route::get('/payments/status/{order_number}', [\App\Http\Controllers\Api\Payment
 // Voucher validation (public)
 Route::get('/vouchers/active', [VoucherController::class, 'active']);
 Route::get('/vouchers/validate', [VoucherController::class, 'check']);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RajaOngkir (Komerce) — Public Routes
+// Tidak memerlukan auth karena dipakai saat checkout (kalkulasi ongkir)
+// ─────────────────────────────────────────────────────────────────────────────
+Route::prefix('rajaongkir')->group(function () {
+    Route::get('/provinces',    [RajaOngkirController::class, 'getProvinces']);
+    Route::get('/cities',       [RajaOngkirController::class, 'getCities']);
+    Route::get('/subdistricts', [RajaOngkirController::class, 'getSubdistricts']);
+    Route::post('/cost',        [RajaOngkirController::class, 'checkCost']);
+});
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -120,6 +132,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Customer Loyalty
     Route::get('/customer/loyalty', [LoyaltyController::class, 'getLoyaltyData']);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // RajaOngkir (Komerce) — Protected Routes
+    // Tracking resi membutuhkan auth (data sensitif milik customer)
+    // ─────────────────────────────────────────────────────────────────────────
+    Route::get('/rajaongkir/track', [RajaOngkirController::class, 'trackShipment']);
 });
 
  
