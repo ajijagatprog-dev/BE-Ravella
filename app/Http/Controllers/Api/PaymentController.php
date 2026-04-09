@@ -40,9 +40,10 @@ class PaymentController extends Controller
         $paidAt = $request->input('paid_at');
         $xenditInvoiceId = $request->input('id');
 
-        if (!$externalId || !$status) {
-            Log::warning('Xendit Webhook: Missing external_id or status');
-            return response()->json(['status' => 'error', 'message' => 'Invalid payload'], 400);
+        // Test payload from dashboard does not include external_id or status
+        if (! $externalId || ! $status) {
+            Log::info('Xendit Webhook: Test ping received from dashboard');
+            return response()->json(['status' => 'success', 'message' => 'Webhook endpoint active'], 200);
         }
 
         // Find the order by order_number (external_id)
@@ -50,7 +51,9 @@ class PaymentController extends Controller
 
         if (!$order) {
             Log::warning("Xendit Webhook: Order not found for external_id: {$externalId}");
-            return response()->json(['status' => 'error', 'message' => 'Order not found'], 404);
+            // Return 200 so Xendit doesn't keep retrying for non-existent orders, 
+            // and so the 'Test and save' button in dashboard works smoothly.
+            return response()->json(['status' => 'error', 'message' => 'Order not found'], 200);
         }
 
         Log::info("Xendit Webhook: Processing status '{$status}' for order {$order->order_number}");
