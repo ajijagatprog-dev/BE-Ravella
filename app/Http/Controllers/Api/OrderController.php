@@ -47,6 +47,7 @@ class OrderController extends Controller
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.price' => 'required|numeric',
             'voucher_code' => 'nullable|string',
+            'source' => 'nullable|string',
         ]);
 
         // Get shipping address details to snapshot
@@ -114,6 +115,9 @@ class OrderController extends Controller
                 ]);
             }
 
+            $source = $request->input('source', 'retail');
+            $redirectQuery = '&source=' . $source;
+
             $createInvoiceRequest = new \Xendit\Invoice\CreateInvoiceRequest([
                 'external_id' => $order->order_number,
                 'amount' => (float) $order->total_amount,
@@ -122,11 +126,12 @@ class OrderController extends Controller
                 'invoice_duration' => 86400, // 24 hours
                 'currency' => 'IDR',
                 'items' => $xenditItems,
-                'success_redirect_url' => env('FRONTEND_URL', 'http://localhost:3000') . '/payment/success?order=' . $order->order_number,
-                'failure_redirect_url' => env('FRONTEND_URL', 'http://localhost:3000') . '/payment/failed?order=' . $order->order_number,
+                'success_redirect_url' => env('FRONTEND_URL', 'http://localhost:3000') . '/payment/success?order=' . $order->order_number . $redirectQuery,
+                'failure_redirect_url' => env('FRONTEND_URL', 'http://localhost:3000') . '/payment/failed?order=' . $order->order_number . $redirectQuery,
                 'metadata' => [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
+                    'source' => $source
                 ],
             ]);
 
@@ -177,7 +182,10 @@ class OrderController extends Controller
     public function getAllOrders(Request $request)
     {
         // Admin user validation should ideally be middleware, assuming sanctum user is admin
-        $orders = Order::with(['user', 'items.product'])->orderBy('created_at', 'desc')->get();
+        $orders = Order::with(['user', 'items.product'])
+            ->where('status', '!=', 'PENDING')
+            ->orderBy('created_at', 'desc')
+            ->get();
 
         return response()->json([
             'status' => 'success',
@@ -304,14 +312,14 @@ class OrderController extends Controller
             ? round((($revenueThisMonth - $revenueLastMonth) / $revenueLastMonth) * 100, 1)
             : ($revenueThisMonth > 0 ? 100 : 0);
 
-        // --- Pesanan Aktif (Active orders: PENDING, PROCESSING, SHIPPED) ---
-        $activeOrders = Order::whereIn('status', ['PENDING', 'PROCESSING', 'SHIPPED'])->count();
+        // --- Pesanan Aktif (Active orders: PROCESSING, SHIPPED) ---
+        $activeOrders = Order::whereIn('status', ['PROCESSING', 'SHIPPED'])->count();
 
-        $activeToday = Order::whereIn('status', ['PENDING', 'PROCESSING', 'SHIPPED'])
+        $activeToday = Order::whereIn('status', ['PROCESSING', 'SHIPPED'])
             ->where('created_at', '>=', $today)
             ->count();
 
-        $activeYesterday = Order::whereIn('status', ['PENDING', 'PROCESSING', 'SHIPPED'])
+        $activeYesterday = Order::whereIn('status', ['PROCESSING', 'SHIPPED'])
             ->whereBetween('created_at', [$yesterday, $endOfYesterday])
             ->count();
 
