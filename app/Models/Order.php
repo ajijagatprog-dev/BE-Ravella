@@ -24,7 +24,11 @@ class Order extends Model
         'voucher_code',
         'discount_amount',
         'courier',
-        'tracking_number'
+        'tracking_number',
+        'shipping_cost',
+        'utm_source',
+        'utm_medium',
+        'utm_campaign'
     ];
 
     protected $casts = [

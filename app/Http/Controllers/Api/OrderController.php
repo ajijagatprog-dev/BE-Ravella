@@ -42,12 +42,17 @@ class OrderController extends Controller
         $validated = $request->validate([
             'shipping_address_id' => 'required|exists:addresses,id',
             'payment_method' => 'required|string',
+            'courier' => 'nullable|string',
+            'shipping_cost' => 'nullable|numeric',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.price' => 'required|numeric',
             'voucher_code' => 'nullable|string',
             'source' => 'nullable|string',
+            'utm_source' => 'nullable|string',
+            'utm_medium' => 'nullable|string',
+            'utm_campaign' => 'nullable|string',
         ]);
 
         // Get shipping address details to snapshot
@@ -70,8 +75,8 @@ class OrderController extends Controller
             }
         }
 
-        // Add shipping cost (Free if > 500.000)
-        $shippingFee = $subtotal > 500000 ? 0 : 25000;
+        // Add shipping cost (Use provided RajaOngkir cost or fallback)
+        $shippingFee = $validated['shipping_cost'] ?? ($subtotal > 500000 ? 0 : 25000);
         $totalAmount = $subtotal - $discountAmount + $shippingFee;
         $totalAmount = max(0, $totalAmount);
 
@@ -82,6 +87,10 @@ class OrderController extends Controller
             'payment_method' => $validated['payment_method'],
             'voucher_code' => $appliedVoucherCode,
             'discount_amount' => $discountAmount,
+            'shipping_cost' => $shippingFee,
+            'utm_source' => $validated['utm_source'] ?? null,
+            'utm_medium' => $validated['utm_medium'] ?? null,
+            'utm_campaign' => $validated['utm_campaign'] ?? null,
             'shipping_address' => json_encode([
                 'recipient_name' => $address->recipient_name,
                 'phone_number' => $address->phone_number,
@@ -115,7 +124,25 @@ class OrderController extends Controller
                 ]);
             }
 
-            $source = $request->input('source', 'retail');
+            // ADD Shipping Fee to Xendit
+            if ($shippingFee > 0) {
+                $xenditItems[] = new \Xendit\Invoice\InvoiceItem([
+                    'name' => 'Shipping Fee (' . ($validated['courier'] ?? 'Standard') . ')',
+                    'quantity' => 1,
+                    'price' => (float) $shippingFee,
+                ]);
+            }
+
+            // ADD Discount to Xendit
+            if ($discountAmount > 0) {
+                $xenditItems[] = new \Xendit\Invoice\InvoiceItem([
+                    'name' => 'Discount (' . ($appliedVoucherCode ?? 'Voucher') . ')',
+                    'quantity' => 1,
+                    'price' => (float) -$discountAmount,
+                ]);
+            }
+
+            $source = $request->input('source', $user->role === 'b2b' ? 'b2b' : 'retail');
             $redirectQuery = '&source=' . $source;
 
             $createInvoiceRequest = new \Xendit\Invoice\CreateInvoiceRequest([
@@ -183,7 +210,6 @@ class OrderController extends Controller
     {
         // Admin user validation should ideally be middleware, assuming sanctum user is admin
         $orders = Order::with(['user', 'items.product'])
-            ->where('status', '!=', 'PENDING')
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -208,7 +234,7 @@ class OrderController extends Controller
     public function updateOrderStatus(Request $request, $order_number)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:PENDING,PROCESSING,SHIPPED,DELIVERED,CANCELLED',
+            'status' => 'required|string|in:PENDING,PAID,PROCESSING,SHIPPED,DELIVERED,CANCELLED',
             'courier' => 'nullable|string',
             'tracking_number' => 'nullable|string',
         ]);

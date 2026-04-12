@@ -64,7 +64,7 @@ class PaymentController extends Controller
                 // Payment successful
                 if ($order->status === 'PENDING') {
                     $order->update([
-                        'status' => 'PROCESSING',
+                        'status' => 'PAID',
                         'payment_method' => $paymentMethod ?? $order->payment_method,
                         'payment_channel' => $paymentChannel,
                         'payment_token' => $xenditInvoiceId,
@@ -79,7 +79,7 @@ class PaymentController extends Controller
                         $user->save();
                     }
 
-                    Log::info("Xendit Webhook: Order {$order->order_number} marked as PROCESSING. Payment via {$paymentChannel}.");
+                    Log::info("Xendit Webhook: Order {$order->order_number} marked as PAID. Payment via {$paymentChannel}.");
                 }
                 break;
 
@@ -151,7 +151,7 @@ class PaymentController extends Controller
         }
 
         if ($validated['status'] === 'success') {
-            $order->status = 'PROCESSING';
+            $order->status = 'PAID';
             $order->payment_token = 'sim_token_' . uniqid();
 
             // Reward loyalty points
