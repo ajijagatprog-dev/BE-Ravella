@@ -90,7 +90,7 @@
                 </div>
 
                 <div class="cta">
-                    <a href="{{ config('app.url') }}/b2b/login" target="_blank">Login ke Portal B2B →</a>
+                    <a href="{{ env('FRONTEND_URL', 'http://localhost:3000') }}/auth/login" target="_blank">Login ke Portal B2B →</a>
                 </div>
 
             @else
