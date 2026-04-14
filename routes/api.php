@@ -103,6 +103,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/reports/customers', [ReportController::class, 'customerReport']);
     Route::get('/admin/reports/stock', [ReportController::class, 'stockReport']);
     Route::get('/admin/reports/transactions', [ReportController::class, 'transactionReport']);
+    Route::get('/admin/reports/traffic', [ReportController::class, 'trafficReport']);
 
     // Voucher management (Admin)
     Route::get('/admin/vouchers', [VoucherController::class, 'index']);

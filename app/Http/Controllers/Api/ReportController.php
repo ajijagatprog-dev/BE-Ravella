@@ -13,7 +13,10 @@ use App\Exports\UsersExport;
 use App\Exports\OrdersExport;
 use App\Exports\ProductsExport;
 use Maatwebsite\Excel\Facades\Excel;
-
+use Google\Analytics\Data\V1beta\Client\BetaAnalyticsDataClient;
+use Google\Analytics\Data\V1beta\DateRange;
+use Google\Analytics\Data\V1beta\Dimension;
+use Google\Analytics\Data\V1beta\Metric;
 class ReportController extends Controller
 {
     // Export All Users (Admin User Management)
@@ -217,6 +220,101 @@ class ReportController extends Controller
                 ],
             ]
         ]);
+    }
+
+    // GET: /api/admin/reports/traffic
+    public function trafficReport(Request $request)
+    {
+        $period = $request->input('period', 'last_30');
+        
+        $startDate = match($period) {
+            'last_7' => '7daysAgo',
+            'last_30' => '30daysAgo',
+            'last_90' => '90daysAgo',
+            'all' => '2020-01-01',
+            default => '30daysAgo',
+        };
+
+        $propertyId = env('GA4_PROPERTY_ID');
+
+        if (!$propertyId) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'GA4_PROPERTY_ID is not configured in .env',
+            ], 500);
+        }
+
+        try {
+            $client = new BetaAnalyticsDataClient([
+                'credentials' => env('GOOGLE_APPLICATION_CREDENTIALS')
+            ]);
+
+            // Query basic metrics
+            $runReportReq = new \Google\Analytics\Data\V1beta\RunReportRequest([
+                'property' => 'properties/' . $propertyId,
+                'date_ranges' => [new DateRange(['start_date' => $startDate, 'end_date' => 'today'])],
+                'dimensions' => [new Dimension(['name' => 'pagePath'])], // We use pagePath for URL visits
+                'metrics' => [
+                    new Metric(['name' => 'screenPageViews']),
+                    new Metric(['name' => 'activeUsers']),
+                    new Metric(['name' => 'sessions']),
+                    new Metric(['name' => 'newUsers']),
+                ],
+                'limit' => 50,
+            ]);
+
+            $response = $client->runReport($runReportReq);
+
+            $pages = [];
+            $totalViews = 0;
+            $totalActiveUsers = 0;
+            $totalSessions = 0;
+            $totalNewUsers = 0;
+
+            foreach ($response->getRows() as $row) {
+                $pagePath = $row->getDimensionValues()[0]->getValue();
+                
+                $views = (int) $row->getMetricValues()[0]->getValue();
+                $activeUsers = (int) $row->getMetricValues()[1]->getValue();
+                $sessions = (int) $row->getMetricValues()[2]->getValue();
+                $newUsers = (int) $row->getMetricValues()[3]->getValue();
+
+                $totalViews += $views;
+                $totalActiveUsers += $activeUsers;
+                $totalSessions += $sessions;
+                $totalNewUsers += $newUsers;
+
+                $pages[] = [
+                    'page_path' => $pagePath,
+                    'views' => $views,
+                    'active_users' => $activeUsers,
+                    'sessions' => $sessions,
+                    'new_users' => $newUsers,
+                ];
+            }
+
+            // Sort by views descending
+            usort($pages, fn($a, $b) => $b['views'] <=> $a['views']);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'traffic' => $pages,
+                    'summary' => [
+                        ['label' => 'Total Pageviews', 'value' => $totalViews, 'change' => 0, 'up' => true],
+                        ['label' => 'Active Users', 'value' => $totalActiveUsers, 'change' => 0, 'up' => true],
+                        ['label' => 'Total Sessions', 'value' => $totalSessions, 'change' => 0, 'up' => true],
+                        ['label' => 'New Users', 'value' => $totalNewUsers, 'change' => 0, 'up' => true],
+                    ],
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Analytics API Error: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     private function getDateFrom(string $period): ?string
