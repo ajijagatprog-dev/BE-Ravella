@@ -223,8 +223,7 @@
             </div>
 
             <div class="cta">
-                <a href="{{ env('FRONTEND_URL', 'http://localhost:3000') }}/admin/users_management?role=b2b&status=pending"
-                    target="_blank">
+                <a href="{{ env('FRONTEND_URL', 'http://localhost:3000') }}/admin/b2bpartner" target="_blank">
                     Buka Halaman Admin → Review Sekarang
                 </a>
             </div>
