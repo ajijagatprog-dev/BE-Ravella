@@ -112,11 +112,13 @@ class ReportController extends Controller
                 $lastOrder = Order::where('user_id', $user->id)
                     ->orderBy('created_at', 'desc')
                     ->first();
-                
+
                 // Determine tier
                 $tier = 'Basic';
-                if ($totalSpent > 15000000) $tier = 'Platinum';
-                elseif ($totalSpent > 5000000) $tier = 'Gold';
+                if ($totalSpent > 15000000)
+                    $tier = 'Platinum';
+                elseif ($totalSpent > 5000000)
+                    $tier = 'Gold';
 
                 return [
                     'name' => $user->name,
@@ -226,8 +228,8 @@ class ReportController extends Controller
     public function trafficReport(Request $request)
     {
         $period = $request->input('period', 'last_30');
-        
-        $startDate = match($period) {
+
+        $startDate = match ($period) {
             'last_7' => '7daysAgo',
             'last_30' => '30daysAgo',
             'last_90' => '90daysAgo',
@@ -245,8 +247,15 @@ class ReportController extends Controller
         }
 
         try {
+            $credentialPath = env('GOOGLE_APPLICATION_CREDENTIALS');
+            // Jika path adalah filename saja atau tidak ditemukan di path absolut,
+            // arahkan ke storage/app/
+            if (!file_exists($credentialPath)) {
+                $credentialPath = storage_path('app/' . basename($credentialPath));
+            }
+
             $client = new BetaAnalyticsDataClient([
-                'credentials' => env('GOOGLE_APPLICATION_CREDENTIALS')
+                'credentials' => $credentialPath
             ]);
 
             // Query basic metrics
@@ -273,7 +282,7 @@ class ReportController extends Controller
 
             foreach ($response->getRows() as $row) {
                 $pagePath = $row->getDimensionValues()[0]->getValue();
-                
+
                 $views = (int) $row->getMetricValues()[0]->getValue();
                 $activeUsers = (int) $row->getMetricValues()[1]->getValue();
                 $sessions = (int) $row->getMetricValues()[2]->getValue();
@@ -319,7 +328,7 @@ class ReportController extends Controller
 
     private function getDateFrom(string $period): ?string
     {
-        return match($period) {
+        return match ($period) {
             'last_7' => now()->subDays(7)->toDateString(),
             'last_30' => now()->subDays(30)->toDateString(),
             'last_90' => now()->subDays(90)->toDateString(),
