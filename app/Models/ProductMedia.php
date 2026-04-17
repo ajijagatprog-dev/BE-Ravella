@@ -13,6 +13,7 @@ class ProductMedia extends Model
 
     protected $fillable = [
         'product_id',
+        'variant_id',
         'type',
         'url',
         'sort_order',
@@ -26,6 +27,11 @@ class ProductMedia extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function variant()
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
     public function getUrlAttribute($value)

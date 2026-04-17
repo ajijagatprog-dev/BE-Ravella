@@ -56,4 +56,17 @@ class Product extends Model
     {
         return $this->hasMany(ProductMedia::class)->orderBy('sort_order');
     }
+
+    /**
+     * Main product media (not attached to any variant).
+     */
+    public function mainMedia()
+    {
+        return $this->hasMany(ProductMedia::class)->whereNull('variant_id')->orderBy('sort_order');
+    }
+
+    public function variants()
+    {
+        return $this->hasMany(ProductVariant::class)->orderBy('sort_order');
+    }
 }

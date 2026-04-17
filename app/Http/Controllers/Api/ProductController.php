@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductMedia;
+use App\Models\ProductVariant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -15,7 +16,7 @@ class ProductController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Product::with('media');
+        $query = Product::with(['media', 'variants.media']);
 
         if ($request->has('category')) {
             $query->where('category', $request->category);
@@ -54,8 +55,8 @@ class ProductController extends Controller
 
     public function show($id)
     {
-        // Accept either ID or slug — eager load media
-        $product = Product::with('media')->where('id', $id)->orWhere('slug', $id)->first();
+        // Accept either ID or slug — eager load media and variants
+        $product = Product::with(['media', 'variants.media'])->where('id', $id)->orWhere('slug', $id)->first();
 
         if (!$product) {
             return response()->json([
@@ -93,9 +94,11 @@ class ProductController extends Controller
             'features' => 'nullable|string',
             'specifications' => 'nullable|string',
             'video_url' => 'nullable|string|max:500',
-            // Multi-media uploads
-            'media_files' => 'nullable|array|max:10',
+            // Multi-media uploads (max 8 main media: images up to 10MB, videos up to 50MB)
+            'media_files' => 'nullable|array|max:8',
             'media_files.*' => 'file|mimes:jpeg,png,jpg,gif,webp,mp4,webm,mov|max:51200',
+            // Variants JSON
+            'variants_json' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -116,8 +119,8 @@ class ProductController extends Controller
             $data['image'] = Storage::url($imagePath);
         }
 
-        // Remove media_files from data — handled separately
-        unset($data['media_files']);
+        // Remove non-product fields from data
+        unset($data['media_files'], $data['variants_json']);
 
         // Handle JSON strings from FormData
         if (isset($data['features']) && is_string($data['features'])) {
@@ -129,7 +132,7 @@ class ProductController extends Controller
 
         $product = Product::create($data);
 
-        // Handle multi-media file uploads
+        // Handle multi-media file uploads (main product images, max 8)
         if ($request->hasFile('media_files')) {
             $sortOrder = 0;
             foreach ($request->file('media_files') as $file) {
@@ -139,10 +142,11 @@ class ProductController extends Controller
 
                 ProductMedia::create([
                     'product_id' => $product->id,
+                    'variant_id' => null, // main product media
                     'type' => $isVideo ? 'video' : 'image',
                     'url' => Storage::url($path),
                     'sort_order' => $sortOrder,
-                    'is_primary' => ($sortOrder === 0 && !$isVideo), // First image is primary
+                    'is_primary' => ($sortOrder === 0 && !$isVideo),
                 ]);
                 $sortOrder++;
             }
@@ -154,10 +158,47 @@ class ProductController extends Controller
             }
         }
 
+        // Handle variants
+        if ($request->has('variants_json') && $request->variants_json) {
+            $variants = json_decode($request->variants_json, true);
+            if (is_array($variants)) {
+                foreach ($variants as $idx => $variantData) {
+                    $variant = ProductVariant::create([
+                        'product_id' => $product->id,
+                        'variant_type' => $variantData['variant_type'] ?? 'Warna',
+                        'variant_value' => $variantData['variant_value'] ?? '',
+                        'price' => isset($variantData['price']) && $variantData['price'] !== '' ? (int) $variantData['price'] : null,
+                        'stock' => (int) ($variantData['stock'] ?? 0),
+                        'sku_suffix' => $variantData['sku_suffix'] ?? null,
+                        'sort_order' => $idx,
+                        'is_default' => !empty($variantData['is_default']),
+                    ]);
+
+                    // Handle variant media files
+                    $variantMediaKey = "variant_media_{$idx}";
+                    if ($request->hasFile($variantMediaKey)) {
+                        $vSortOrder = 0;
+                        foreach ($request->file($variantMediaKey) as $file) {
+                            $path = $file->store('products/variants', 'public');
+                            ProductMedia::create([
+                                'product_id' => $product->id,
+                                'variant_id' => $variant->id,
+                                'type' => 'image',
+                                'url' => Storage::url($path),
+                                'sort_order' => $vSortOrder,
+                                'is_primary' => ($vSortOrder === 0),
+                            ]);
+                            $vSortOrder++;
+                        }
+                    }
+                }
+            }
+        }
+
         return response()->json([
             'status' => 'success',
             'message' => 'Product created successfully',
-            'data' => $product->load('media')
+            'data' => $product->load(['media', 'variants.media'])
         ], 201);
     }
 
@@ -191,11 +232,14 @@ class ProductController extends Controller
             'features' => 'nullable|string',
             'specifications' => 'nullable|string',
             'video_url' => 'nullable|string|max:500',
-            // Multi-media uploads
-            'media_files' => 'nullable|array|max:10',
+            // Multi-media uploads (max 8 main media)
+            'media_files' => 'nullable|array|max:8',
             'media_files.*' => 'file|mimes:jpeg,png,jpg,gif,webp,mp4,webm,mov|max:51200',
-            'delete_media_ids' => 'nullable|string', // JSON string of IDs to delete
+            'delete_media_ids' => 'nullable|string',
             'primary_media_id' => 'nullable|integer',
+            // Variants
+            'variants_json' => 'nullable|string',
+            'delete_variant_ids' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -226,8 +270,8 @@ class ProductController extends Controller
             }
         }
 
-        // Remove media-related fields from product data
-        unset($data['media_files'], $data['delete_media_ids'], $data['primary_media_id']);
+        // Remove non-product fields from data
+        unset($data['media_files'], $data['delete_media_ids'], $data['primary_media_id'], $data['variants_json'], $data['delete_variant_ids']);
 
         // Handle JSON strings from FormData
         if (isset($data['features']) && is_string($data['features'])) {
@@ -255,9 +299,9 @@ class ProductController extends Controller
             }
         }
 
-        // Handle new media file uploads
+        // Handle new media file uploads (main product media)
         if ($request->hasFile('media_files')) {
-            $maxSort = ProductMedia::where('product_id', $product->id)->max('sort_order') ?? -1;
+            $maxSort = ProductMedia::where('product_id', $product->id)->whereNull('variant_id')->max('sort_order') ?? -1;
             $sortOrder = $maxSort + 1;
             foreach ($request->file('media_files') as $file) {
                 $isVideo = in_array($file->getClientOriginalExtension(), ['mp4', 'webm', 'mov']);
@@ -266,6 +310,7 @@ class ProductController extends Controller
 
                 ProductMedia::create([
                     'product_id' => $product->id,
+                    'variant_id' => null,
                     'type' => $isVideo ? 'video' : 'image',
                     'url' => Storage::url($path),
                     'sort_order' => $sortOrder,
@@ -282,17 +327,102 @@ class ProductController extends Controller
                 ->where('id', $request->primary_media_id)
                 ->update(['is_primary' => true]);
 
-            // Also update legacy image field
             $primary = ProductMedia::find($request->primary_media_id);
             if ($primary) {
                 $product->update(['image' => $primary->getRawOriginal('url')]);
             }
         }
 
+        // Handle variant deletions
+        if ($request->has('delete_variant_ids') && $request->delete_variant_ids) {
+            $deleteVariantIds = json_decode($request->delete_variant_ids, true);
+            if (is_array($deleteVariantIds)) {
+                // Delete variant media files from storage first
+                $variantMedia = ProductMedia::where('product_id', $product->id)
+                    ->whereIn('variant_id', $deleteVariantIds)->get();
+                foreach ($variantMedia as $media) {
+                    $rawUrl = $media->getRawOriginal('url');
+                    if ($rawUrl && Str::startsWith($rawUrl, '/storage/')) {
+                        Storage::disk('public')->delete(str_replace('/storage/', '', $rawUrl));
+                    }
+                }
+                // Cascade delete will handle media rows via FK
+                ProductVariant::where('product_id', $product->id)
+                    ->whereIn('id', $deleteVariantIds)->delete();
+            }
+        }
+
+        // Handle variants create/update
+        if ($request->has('variants_json') && $request->variants_json) {
+            $variants = json_decode($request->variants_json, true);
+            if (is_array($variants)) {
+                foreach ($variants as $idx => $variantData) {
+                    $variantFields = [
+                        'product_id' => $product->id,
+                        'variant_type' => $variantData['variant_type'] ?? 'Warna',
+                        'variant_value' => $variantData['variant_value'] ?? '',
+                        'price' => isset($variantData['price']) && $variantData['price'] !== '' && $variantData['price'] !== null ? (int) $variantData['price'] : null,
+                        'stock' => (int) ($variantData['stock'] ?? 0),
+                        'sku_suffix' => $variantData['sku_suffix'] ?? null,
+                        'sort_order' => $idx,
+                        'is_default' => !empty($variantData['is_default']),
+                    ];
+
+                    if (!empty($variantData['id'])) {
+                        // Update existing variant
+                        $variant = ProductVariant::where('id', $variantData['id'])
+                            ->where('product_id', $product->id)->first();
+                        if ($variant) {
+                            $variant->update($variantFields);
+                        }
+                    } else {
+                        // Create new variant
+                        $variant = ProductVariant::create($variantFields);
+                    }
+
+                    // Handle variant media files (new uploads)
+                    $variantMediaKey = "variant_media_{$idx}";
+                    if ($request->hasFile($variantMediaKey) && $variant) {
+                        $vMaxSort = ProductMedia::where('variant_id', $variant->id)->max('sort_order') ?? -1;
+                        $vSortOrder = $vMaxSort + 1;
+                        foreach ($request->file($variantMediaKey) as $file) {
+                            $path = $file->store('products/variants', 'public');
+                            ProductMedia::create([
+                                'product_id' => $product->id,
+                                'variant_id' => $variant->id,
+                                'type' => 'image',
+                                'url' => Storage::url($path),
+                                'sort_order' => $vSortOrder,
+                                'is_primary' => ($vSortOrder === 0),
+                            ]);
+                            $vSortOrder++;
+                        }
+                    }
+
+                    // Handle variant media deletions
+                    $deleteVarMediaKey = "delete_variant_media_ids_{$idx}";
+                    if ($request->has($deleteVarMediaKey) && $request->$deleteVarMediaKey) {
+                        $deleteVarMediaIds = json_decode($request->$deleteVarMediaKey, true);
+                        if (is_array($deleteVarMediaIds) && $variant) {
+                            $varMediaToDelete = ProductMedia::where('variant_id', $variant->id)
+                                ->whereIn('id', $deleteVarMediaIds)->get();
+                            foreach ($varMediaToDelete as $media) {
+                                $rawUrl = $media->getRawOriginal('url');
+                                if ($rawUrl && Str::startsWith($rawUrl, '/storage/')) {
+                                    Storage::disk('public')->delete(str_replace('/storage/', '', $rawUrl));
+                                }
+                                $media->delete();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return response()->json([
             'status' => 'success',
             'message' => 'Product updated successfully',
-            'data' => $product->load('media')
+            'data' => $product->load(['media', 'variants.media'])
         ]);
     }
 
@@ -313,7 +443,7 @@ class ProductController extends Controller
             Storage::disk('public')->delete($oldPath);
         }
 
-        // Delete all media files from storage
+        // Delete all media files from storage (including variant media)
         foreach ($product->media as $media) {
             $rawUrl = $media->getRawOriginal('url');
             if ($rawUrl && Str::startsWith($rawUrl, '/storage/')) {
@@ -321,7 +451,7 @@ class ProductController extends Controller
             }
         }
 
-        // Cascade delete will remove product_media rows
+        // Cascade delete will remove product_media and product_variants rows
         $product->delete();
 
         return response()->json([
