@@ -17,17 +17,21 @@ class Voucher extends Model
         'min_purchase',
         'max_discount',
         'max_uses',
-        'used_count',
         'is_active',
         'expires_at',
+        'starts_at',
+        'sku',
+        'max_per_user',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'expires_at' => 'datetime',
+        'starts_at' => 'datetime',
         'value' => 'decimal:2',
         'min_purchase' => 'decimal:2',
         'max_discount' => 'decimal:2',
+        'max_per_user' => 'integer',
     ];
 
     /**
@@ -36,6 +40,7 @@ class Voucher extends Model
     public function isValid(): bool
     {
         if (!$this->is_active) return false;
+        if ($this->starts_at && $this->starts_at->isFuture()) return false;
         if ($this->expires_at && $this->expires_at->isPast()) return false;
         if ($this->max_uses !== null && $this->used_count >= $this->max_uses) return false;
         return true;

@@ -20,6 +20,7 @@ class LoyaltyController extends Controller
                 'earning_multiplier' => (int) LoyaltySetting::getValue('earning_multiplier', '10'),
                 'redemption_value' => (int) LoyaltySetting::getValue('redemption_value', '5'),
                 'point_expiration' => (int) LoyaltySetting::getValue('point_expiration', '12'),
+                'loyalty_enabled' => LoyaltySetting::getValue('loyalty_enabled', '1') === '1',
             ]
         ]);
     }
@@ -31,6 +32,7 @@ class LoyaltyController extends Controller
             'earning_multiplier' => 'sometimes|integer|min:1',
             'redemption_value' => 'sometimes|integer|min:1',
             'point_expiration' => 'sometimes|integer|min:1',
+            'loyalty_enabled' => 'sometimes|boolean',
         ]);
 
         foreach ($validated as $key => $value) {
@@ -44,6 +46,7 @@ class LoyaltyController extends Controller
                 'earning_multiplier' => (int) LoyaltySetting::getValue('earning_multiplier', '10'),
                 'redemption_value' => (int) LoyaltySetting::getValue('redemption_value', '5'),
                 'point_expiration' => (int) LoyaltySetting::getValue('point_expiration', '12'),
+                'loyalty_enabled' => LoyaltySetting::getValue('loyalty_enabled', '1') === '1',
             ]
         ]);
     }

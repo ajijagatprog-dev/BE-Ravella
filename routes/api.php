@@ -110,6 +110,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/admin/vouchers', [VoucherController::class, 'store']);
     Route::put('/admin/vouchers/{id}', [VoucherController::class, 'update']);
     Route::delete('/admin/vouchers/{id}', [VoucherController::class, 'destroy']);
+    Route::post('/admin/vouchers/bulk-import', [VoucherController::class, 'bulkImport']);
+    Route::get('/admin/vouchers/template', [VoucherController::class, 'downloadTemplate']);
 
     // Export Routes
     Route::get('/admin/export/users', [ReportController::class, 'exportUsers']);

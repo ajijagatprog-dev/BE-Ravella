@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Voucher;
+use App\Imports\VouchersImport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class VoucherController extends Controller
 {
@@ -112,7 +115,10 @@ class VoucherController extends Controller
             'max_discount' => 'nullable|numeric|min:0',
             'max_uses'     => 'nullable|integer|min:1',
             'is_active'    => 'boolean',
-            'expires_at'   => 'nullable|date|after:now',
+            'starts_at'    => 'nullable|date',
+            'expires_at'   => 'nullable|date|after_or_equal:starts_at',
+            'sku'          => 'nullable|string|max:100',
+            'max_per_user' => 'nullable|integer|min:1',
         ]);
 
         if ($validator->fails()) {
@@ -149,7 +155,10 @@ class VoucherController extends Controller
             'max_discount' => 'nullable|numeric|min:0',
             'max_uses'     => 'nullable|integer|min:1',
             'is_active'    => 'boolean',
+            'starts_at'    => 'nullable|date',
             'expires_at'   => 'nullable|date',
+            'sku'          => 'nullable|string|max:100',
+            'max_per_user' => 'nullable|integer|min:1',
         ]);
 
         if ($validator->fails()) {
@@ -184,5 +193,79 @@ class VoucherController extends Controller
             'status'  => 'success',
             'message' => 'Voucher deleted successfully',
         ]);
+    }
+
+    /**
+     * POST /api/admin/vouchers/bulk-import
+     * Import vouchers from Excel (.xlsx / .csv)
+     * Kolom wajib: kode_voucher, tipe, nilai
+     */
+    public function bulkImport(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'file' => 'required|file|mimes:xlsx,xls,csv|max:5120', // max 5MB
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'File tidak valid. Harap upload file Excel (.xlsx, .xls) atau CSV.',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $import = new VouchersImport();
+        Excel::import($import, $request->file('file'));
+
+        $failures = $import->failures();
+        $failureMessages = [];
+        foreach ($failures as $failure) {
+            $failureMessages[] = "Baris {$failure->row()}: " . implode(', ', $failure->errors());
+        }
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Import selesai.',
+            'imported' => true,
+            'failures' => $failureMessages,
+        ]);
+    }
+
+    /**
+     * GET /api/admin/vouchers/template
+     * Download template Excel untuk bulk import voucher (Format Baru)
+     */
+    public function downloadTemplate(): StreamedResponse
+    {
+        $headers = [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="template_voucher.xlsx"',
+        ];
+
+        return Excel::download(new class implements \Maatwebsite\Excel\Concerns\FromArray, \Maatwebsite\Excel\Concerns\WithHeadings, \Maatwebsite\Excel\Concerns\WithStyles {
+            public function headings(): array {
+                return [
+                    'Kode Produk / SKU',
+                    'Kode Voucher',
+                    'Nominal Voucher',
+                    'Minimal Purchase',
+                    'Qty Voucher',
+                    'Maksimal Claim per Buyer',
+                    'Periode On',
+                    'Periode Off / Kadaluarsa',
+                ];
+            }
+            public function array(): array {
+                return [
+                    ['SKU-123', 'PROMO77', 50000, 100000, 50, 1, '2026-04-01', '2026-04-30'],
+                    ['ALL', 'HEMAT10K', 10000, 50000, 100, 2, '2026-04-01', '2026-12-31'],
+                ];
+            }
+            public function styles(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet): array {
+                return [
+                    1 => ['font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']], 'fill' => ['fillType' => 'solid', 'color' => ['rgb' => '1F2937']]],
+                ];
+            }
+        }, 'template_voucher.xlsx');
     }
 }

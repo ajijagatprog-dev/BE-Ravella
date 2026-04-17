@@ -22,6 +22,10 @@ class DashboardController extends Controller
         $pendingOrders = Order::where('status', 'PENDING')->count();
         $processingOrders = Order::where('status', 'PROCESSING')->count();
         $deliveredOrders = Order::where('status', 'DELIVERED')->count();
+        $cancelledOrders = Order::where('status', 'CANCELLED')->count();
+
+        // ── Success rate ────────────────────────────────────
+        $successRate = $totalOrders > 0 ? round(($deliveredOrders / $totalOrders) * 100, 1) : 0;
 
         // ── Recent 7 days sales for chart ───────────────────
         $dailySales = [];
@@ -83,6 +87,8 @@ class DashboardController extends Controller
                     'pending_orders' => $pendingOrders,
                     'processing_orders' => $processingOrders,
                     'delivered_orders' => $deliveredOrders,
+                    'cancelled_orders' => $cancelledOrders,
+                    'success_rate' => $successRate,
                     'low_stock' => $lowStockCount,
                     'out_of_stock' => $outOfStockCount,
                 ],
