@@ -85,15 +85,19 @@ class ReportController extends Controller
 
         $ordersCount = Order::when($dateFrom, fn($q) => $q->where('created_at', '>=', $dateFrom))->count();
         $avgOrderValue = $ordersCount > 0 ? round($totalRevenue / $ordersCount) : 0;
+        $cancelledCount = Order::where('status', 'CANCELLED')
+            ->when($dateFrom, fn($q) => $q->where('created_at', '>=', $dateFrom))
+            ->count();
 
         return response()->json([
             'status' => 'success',
             'data' => [
                 'products' => $products,
                 'summary' => [
-                    ['label' => 'Total Revenue', 'value' => $totalRevenue, 'change' => 0, 'up' => true],
-                    ['label' => 'Orders Count', 'value' => $ordersCount, 'change' => 0, 'up' => true],
-                    ['label' => 'Avg. Order Value', 'value' => $avgOrderValue, 'change' => 0, 'up' => true],
+                    ['label' => 'Total Penjualan', 'value' => $totalRevenue, 'change' => 0, 'up' => true],
+                    ['label' => 'Total Pesanan', 'value' => $ordersCount, 'change' => 0, 'up' => true],
+                    ['label' => 'Rata-rata Transaksi', 'value' => $avgOrderValue, 'change' => 0, 'up' => true],
+                    ['label' => 'Pesanan Dibatalkan', 'value' => $cancelledCount, 'change' => 0, 'up' => false],
                 ],
             ]
         ]);
@@ -125,7 +129,7 @@ class ReportController extends Controller
                     'email' => $user->email,
                     'orders' => $user->orders_count,
                     'totalSpent' => $totalSpent,
-                    'lastOrder' => $lastOrder ? $lastOrder->created_at->format('M d, Y') : '—',
+                    'lastOrder' => $lastOrder ? $lastOrder->created_at->format('d M Y') : '—',
                     'status' => $user->orders_count > 0 ? 'active' : 'inactive',
                     'tier' => $tier,
                 ];
@@ -142,10 +146,10 @@ class ReportController extends Controller
             'data' => [
                 'customers' => $users->values(),
                 'summary' => [
-                    ['label' => 'Total Customers', 'value' => $totalCustomers, 'change' => 0, 'up' => true],
-                    ['label' => 'Active Customers', 'value' => $activeCustomers, 'change' => 0, 'up' => true],
-                    ['label' => 'Avg. Orders / Customer', 'value' => $avgOrders, 'change' => 0, 'up' => true],
-                    ['label' => 'Customer LTV', 'value' => $avgLtv, 'change' => 0, 'up' => true],
+                    ['label' => 'Total Pelanggan', 'value' => $totalCustomers, 'change' => 0, 'up' => true],
+                    ['label' => 'Pelanggan Aktif', 'value' => $activeCustomers, 'change' => 0, 'up' => true],
+                    ['label' => 'Rata-rata Pesanan / Pelanggan', 'value' => $avgOrders, 'change' => 0, 'up' => true],
+                    ['label' => 'LTV Pelanggan', 'value' => $avgLtv, 'change' => 0, 'up' => true],
                 ],
             ]
         ]);
@@ -172,10 +176,10 @@ class ReportController extends Controller
             'data' => [
                 'products' => $products->values(),
                 'summary' => [
-                    ['label' => 'Total SKUs', 'value' => $products->count(), 'change' => 0, 'up' => true],
-                    ['label' => 'In Stock', 'value' => $inStock, 'change' => 0, 'up' => true],
-                    ['label' => 'Low Stock', 'value' => $lowStock, 'change' => 0, 'up' => $lowStock == 0],
-                    ['label' => 'Out of Stock', 'value' => $outOfStock, 'change' => 0, 'up' => $outOfStock == 0],
+                    ['label' => 'Total SKU', 'value' => $products->count(), 'change' => 0, 'up' => true],
+                    ['label' => 'Stok Tersedia', 'value' => $inStock, 'change' => 0, 'up' => true],
+                    ['label' => 'Stok Menipis', 'value' => $lowStock, 'change' => 0, 'up' => $lowStock == 0],
+                    ['label' => 'Stok Habis', 'value' => $outOfStock, 'change' => 0, 'up' => $outOfStock == 0],
                 ],
             ]
         ]);
@@ -197,7 +201,7 @@ class ReportController extends Controller
             ->map(fn($o) => [
                 'id' => $o->order_number,
                 'customer' => $o->user->name ?? 'Unknown',
-                'date' => $o->created_at->format('M d, Y'),
+                'date' => $o->created_at->format('d M Y'),
                 'items' => $o->items()->count(),
                 'amount' => $o->total_amount,
                 'method' => $o->payment_method ?? 'N/A',
@@ -215,10 +219,10 @@ class ReportController extends Controller
             'data' => [
                 'transactions' => $orders->values(),
                 'summary' => [
-                    ['label' => 'Total Transactions', 'value' => $total, 'change' => 0, 'up' => true],
-                    ['label' => 'Completed', 'value' => $completed, 'change' => 0, 'up' => true],
-                    ['label' => 'Pending / Processing', 'value' => $pending, 'change' => 0, 'up' => $pending == 0],
-                    ['label' => 'Cancelled', 'value' => $cancelled, 'change' => 0, 'up' => $cancelled == 0],
+                    ['label' => 'Total Transaksi', 'value' => $total, 'change' => 0, 'up' => true],
+                    ['label' => 'Selesai', 'value' => $completed, 'change' => 0, 'up' => true],
+                    ['label' => 'Menunggu / Proses', 'value' => $pending, 'change' => 0, 'up' => $pending == 0],
+                    ['label' => 'Dibatalkan', 'value' => $cancelled, 'change' => 0, 'up' => $cancelled == 0],
                 ],
             ]
         ]);
@@ -310,10 +314,10 @@ class ReportController extends Controller
                 'data' => [
                     'traffic' => $pages,
                     'summary' => [
-                        ['label' => 'Total Pageviews', 'value' => $totalViews, 'change' => 0, 'up' => true],
-                        ['label' => 'Active Users', 'value' => $totalActiveUsers, 'change' => 0, 'up' => true],
-                        ['label' => 'Total Sessions', 'value' => $totalSessions, 'change' => 0, 'up' => true],
-                        ['label' => 'New Users', 'value' => $totalNewUsers, 'change' => 0, 'up' => true],
+                        ['label' => 'Total Tayangan Halaman', 'value' => $totalViews, 'change' => 0, 'up' => true],
+                        ['label' => 'Pengguna Aktif', 'value' => $totalActiveUsers, 'change' => 0, 'up' => true],
+                        ['label' => 'Total Sesi', 'value' => $totalSessions, 'change' => 0, 'up' => true],
+                        ['label' => 'Pengguna Baru', 'value' => $totalNewUsers, 'change' => 0, 'up' => true],
                     ],
                 ]
             ]);
