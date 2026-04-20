@@ -58,6 +58,17 @@ class LoyaltyController extends Controller
         return response()->json(['status' => 'success', 'data' => $tiers]);
     }
 
+    // GET: /api/public/loyalty/tiers (no auth required — for homepage showcase)
+    public function getPublicTiers()
+    {
+        $enabled = LoyaltySetting::getValue('loyalty_enabled', '1') === '1';
+        if (!$enabled) {
+            return response()->json(['status' => 'success', 'data' => []]);
+        }
+        $tiers = json_decode(LoyaltySetting::getValue('tiers', '[]'), true);
+        return response()->json(['status' => 'success', 'data' => $tiers]);
+    }
+
     // PUT: /api/admin/loyalty/tiers
     public function updateTiers(Request $request)
     {

@@ -10,6 +10,7 @@ class Product extends Model
     use HasFactory;
 
     protected $fillable = [
+        'sku',
         'name',
         'slug',
         'description',
@@ -65,8 +66,54 @@ class Product extends Model
         return $this->hasMany(ProductMedia::class)->whereNull('variant_id')->orderBy('sort_order');
     }
 
+    protected $appends = [
+        'active_promotion',
+        'promoted_price',
+    ];
+
     public function variants()
     {
         return $this->hasMany(ProductVariant::class)->orderBy('sort_order');
+    }
+
+    public function promotions()
+    {
+        return $this->hasMany(ProductPromotion::class, 'sku', 'sku');
+    }
+
+    /**
+     * Get the currently active promotion for this product.
+     * Prioritizes 'flash_sale' over 'discount'.
+     */
+    public function getActivePromotionAttribute()
+    {
+        if (!$this->sku) return null;
+
+        // Try to find an active flash sale first
+        $flashSale = ProductPromotion::active()
+            ->where('sku', $this->sku)
+            ->where('type', 'flash_sale')
+            ->first();
+
+        if ($flashSale) return $flashSale;
+
+        // Fallback to active discount
+        return ProductPromotion::active()
+            ->where('sku', $this->sku)
+            ->where('type', 'discount')
+            ->first();
+    }
+
+    /**
+     * Get the final price after applying active promotions.
+     */
+    public function getPromotedPriceAttribute()
+    {
+        $promo = $this->active_promotion;
+        if (!$promo) {
+            return $this->price;
+        }
+
+        return $promo->calculateDiscountedPrice($this->price);
     }
 }

@@ -35,12 +35,21 @@ class ProductController extends Controller
             });
         }
 
-        // Sale filter — products with discount > 0 or sale_price set
+        // Sale filter — products with active promotions (new system) or legacy discount/sale_price
         if ($request->boolean('on_sale')) {
             $query->where(function ($q) {
                 $q->where('discount', '>', 0)
                   ->orWhere(function ($q2) {
                       $q2->whereNotNull('sale_price')->where('sale_price', '>', 0);
+                  })
+                  ->orWhereHas('promotions', function ($q3) {
+                      $q3->where('is_active', true)
+                         ->where(function ($q4) {
+                             $q4->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+                         })
+                         ->where(function ($q4) {
+                             $q4->whereNull('ends_at')->orWhere('ends_at', '>=', now());
+                         });
                   });
             });
         }

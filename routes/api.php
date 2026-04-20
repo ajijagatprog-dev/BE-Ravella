@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\VoucherController;
 use App\Http\Controllers\Api\RajaOngkirController;
+use App\Http\Controllers\Api\PromotionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -47,6 +48,9 @@ Route::get('/payments/status/{order_number}', [\App\Http\Controllers\Api\Payment
 // Voucher validation (public)
 Route::get('/vouchers/active', [VoucherController::class, 'active']);
 Route::get('/vouchers/validate', [VoucherController::class, 'check']);
+
+// Public loyalty tiers (for homepage showcase)
+Route::get('/public/loyalty/tiers', [LoyaltyController::class, 'getPublicTiers']);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RajaOngkir (Komerce) — Public Routes
@@ -112,6 +116,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/admin/vouchers/{id}', [VoucherController::class, 'destroy']);
     Route::post('/admin/vouchers/bulk-import', [VoucherController::class, 'bulkImport']);
     Route::get('/admin/vouchers/template', [VoucherController::class, 'downloadTemplate']);
+
+    // Promotion management (Admin)
+    Route::get('/admin/promotions', [PromotionController::class, 'index']);
+    Route::post('/admin/promotions', [PromotionController::class, 'store']);
+    Route::put('/admin/promotions/{id}', [PromotionController::class, 'update']);
+    Route::delete('/admin/promotions/{id}', [PromotionController::class, 'destroy']);
+    Route::post('/admin/promotions/import', [PromotionController::class, 'import']);
 
     // Export Routes
     Route::get('/admin/export/users', [ReportController::class, 'exportUsers']);
