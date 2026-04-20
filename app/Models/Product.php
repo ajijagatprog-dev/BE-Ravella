@@ -69,11 +69,24 @@ class Product extends Model
     protected $appends = [
         'active_promotion',
         'promoted_price',
+        'calculated_rating',
+        'total_reviews_count',
+        'rating_distribution',
     ];
 
     public function variants()
     {
         return $this->hasMany(ProductVariant::class)->orderBy('sort_order');
+    }
+
+    public function reviews()
+    {
+        return $this->hasMany(ProductReview::class);
+    }
+
+    public function approvedReviews()
+    {
+        return $this->hasMany(ProductReview::class)->where('status', 'approved');
     }
 
     public function promotions()
@@ -115,5 +128,73 @@ class Product extends Model
         }
 
         return $promo->calculateDiscountedPrice($this->price);
+    }
+
+    /**
+     * Logic: If real reviews exist, calculate average.
+     * Otherwise, fallback to the manual 'rating' field (admin input).
+     */
+    public function getCalculatedRatingAttribute()
+    {
+        $realReviews = $this->approvedReviews;
+        
+        if ($realReviews->count() > 0) {
+            return round($realReviews->avg('rating'), 1);
+        }
+
+        // Fallback to Choice A: Manual admin input
+        return (float) ($this->attributes['rating'] ?? 0);
+    }
+
+    /**
+     * Logic: If real reviews exist, return count.
+     * Otherwise, fallback to the manual 'reviews' field (admin input).
+     */
+    public function getTotalReviewsCountAttribute()
+    {
+        $realCount = $this->approvedReviews()->count();
+        
+        if ($realCount > 0) {
+            return $realCount;
+        }
+
+        // Fallback to manual admin input
+        return (int) ($this->attributes['reviews'] ?? 0);
+    }
+
+    /**
+     * Calculate how many users gave 1, 2, 3, 4, 5 stars.
+     */
+    public function getRatingDistributionAttribute()
+    {
+        $realReviews = $this->approvedReviews;
+        
+        $distribution = [
+            5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0
+        ];
+
+        if ($realReviews->count() > 0) {
+            foreach ($realReviews as $review) {
+                $distribution[$review->rating]++;
+            }
+        } else {
+            // Fake distribution based on manual rating if no real data
+            $manualRating = round($this->attributes['rating'] ?? 0);
+            if ($manualRating > 0) {
+                $distribution[$manualRating] = $this->attributes['reviews'] ?? 0;
+            }
+        }
+
+        return $distribution;
+    }
+
+    /**
+     * Mode: The most frequent rating given by users.
+     */
+    public function getMostFrequentRatingAttribute()
+    {
+        $dist = $this->rating_distribution;
+        arsort($dist);
+        return key($dist);
     }
 }

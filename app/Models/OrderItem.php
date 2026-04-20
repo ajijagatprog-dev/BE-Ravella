@@ -16,6 +16,19 @@ class OrderItem extends Model
         'price',
     ];
 
+    protected $appends = ['has_review'];
+
+    public function review()
+    {
+        return $this->hasMany(ProductReview::class, 'product_id', 'product_id')
+            ->where('order_id', $this->order_id);
+    }
+
+    public function getHasReviewAttribute()
+    {
+        return $this->review()->exists();
+    }
+
     public function order()
     {
         return $this->belongsTo(Order::class);

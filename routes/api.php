@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\VoucherController;
 use App\Http\Controllers\Api\RajaOngkirController;
 use App\Http\Controllers\Api\PromotionController;
+use App\Http\Controllers\Api\ReviewController;
 
 /*
 |--------------------------------------------------------------------------
@@ -33,6 +34,7 @@ Route::post('/auth/login', [AuthController::class, 'login']);
 
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/{id}', [ProductController::class, 'show']);
+Route::get('/products/{id}/reviews', [ReviewController::class, 'getProductReviews']);
 
 Route::get('/news', [NewsController::class, 'index']);
 Route::get('/news/{id}', [NewsController::class, 'show']);
@@ -124,6 +126,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/admin/promotions/{id}', [PromotionController::class, 'destroy']);
     Route::post('/admin/promotions/import', [PromotionController::class, 'import']);
 
+    // Review management (Admin)
+    Route::get('/admin/reviews', [ReviewController::class, 'index']);
+    Route::put('/admin/reviews/{id}/status', [ReviewController::class, 'updateStatus']);
+    Route::put('/admin/reviews/{id}/reply', [ReviewController::class, 'reply']);
+    Route::delete('/admin/reviews/{id}', [ReviewController::class, 'destroy']);
+
     // Export Routes
     Route::get('/admin/export/users', [ReportController::class, 'exportUsers']);
     Route::get('/admin/export/orders', [ReportController::class, 'exportOrders']);
@@ -144,6 +152,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/customer/orders', [OrderController::class, 'createOrder']);
     Route::get('/customer/orders/{order_number}', [OrderController::class, 'getOrderDetail']);
     Route::get('/customer/orders/{order_number}/tracking', [OrderController::class, 'trackOrder']);
+    Route::post('/reviews', [ReviewController::class, 'store']);
 
     // Customer Loyalty
     Route::get('/customer/loyalty', [LoyaltyController::class, 'getLoyaltyData']);
