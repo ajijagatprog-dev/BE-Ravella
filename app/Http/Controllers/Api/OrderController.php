@@ -9,6 +9,10 @@ use App\Models\Voucher;
 use Carbon\Carbon;
 use App\Services\TrackingService;
 use Illuminate\Support\Facades\Log;
+use App\Mail\NewOrderAdminMail;
+use App\Mail\OrderSuccessCustomerMail;
+use App\Services\FonnteService;
+use Illuminate\Support\Facades\Mail;
 
 class OrderController extends Controller
 {
@@ -171,6 +175,40 @@ class OrderController extends Controller
             ]);
 
             Log::info("Xendit Invoice created for order: {$order->order_number}, Invoice ID: {$invoice->getId()}");
+
+            // --- SEND NOTIFICATIONS (EMAIL & WHATSAPP) ---
+            try {
+                // 1. WhatsApp Configuration
+                $fonnte = new FonnteService();
+                $customerPhone = $address->phone_number; 
+                $adminPhone = config('fonnte.admin_phone');
+
+                // 2. Format Currency
+                $formattedTotal = 'Rp ' . number_format($order->total_amount, 0, ',', '.');
+                $paymentUrl = $invoice->getInvoiceUrl();
+
+                // 3. Messages Setup
+                $waCustomerMsg = "Halo {$user->name},\n\nTerima kasih telah berbelanja di Ravella!\n\nPesanan Anda dengan nomor *{$order->order_number}* berhasil dibuat.\nTotal Tagihan: *{$formattedTotal}*\n\nSilakan selesaikan pembayaran langsung melalui sistem kami pada link berikut (jika belum):\n{$paymentUrl}\n\nAbaikan pesan ini jika Anda sudah mambayar. Terima kasih.\n\n_Pesan ini dikirim secara otomatis._";
+                
+                $waAdminMsg = "🚨 *PESANAN BARU MASUK* 🚨\n\nNo. Order: {$order->order_number}\nPelanggan: {$user->name}\nTotal: {$formattedTotal}\nStatus: PENDING (Menunggu Pembayaran)\n\nSilakan pantau melalui Dashboard Admin.";
+
+                // 4. Send WhatsApp Executions
+                if ($customerPhone) $fonnte->sendMessage($customerPhone, $waCustomerMsg);
+                if ($adminPhone) $fonnte->sendMessage($adminPhone, $waAdminMsg);
+
+                // 5. Send Emails
+                Mail::to($user->email)->send(new OrderSuccessCustomerMail($order));
+                
+                $adminEmail = config('mail.admin_email');
+                if ($adminEmail) {
+                    Mail::to($adminEmail)->send(new NewOrderAdminMail($order));
+                }
+                
+                Log::info("All notifications (WA & Email) queued successfully for order: {$order->order_number}");
+            } catch (\Exception $e) {
+                // Prevent order failure if notifications error out (e.g., SMTP timeout)
+                Log::error("Failed to send order notifications: " . $e->getMessage());
+            }
 
             return response()->json([
                 'status' => 'success',
