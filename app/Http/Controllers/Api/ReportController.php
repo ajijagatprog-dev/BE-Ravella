@@ -79,12 +79,19 @@ class ReportController extends Controller
         });
 
         // Summary stats
-        $totalRevenue = Order::where('status', 'DELIVERED')
+        $grossRevenue = Order::when($dateFrom, fn($q) => $q->where('created_at', '>=', $dateFrom))
+            ->sum('total_amount');
+
+        $successRevenue = Order::where('status', 'DELIVERED')
+            ->when($dateFrom, fn($q) => $q->where('created_at', '>=', $dateFrom))
+            ->sum('total_amount');
+
+        $cancelledRevenue = Order::where('status', 'CANCELLED')
             ->when($dateFrom, fn($q) => $q->where('created_at', '>=', $dateFrom))
             ->sum('total_amount');
 
         $ordersCount = Order::when($dateFrom, fn($q) => $q->where('created_at', '>=', $dateFrom))->count();
-        $avgOrderValue = $ordersCount > 0 ? round($totalRevenue / $ordersCount) : 0;
+        $avgOrderValue = $ordersCount > 0 ? round($grossRevenue / $ordersCount) : 0;
         $cancelledCount = Order::where('status', 'CANCELLED')
             ->when($dateFrom, fn($q) => $q->where('created_at', '>=', $dateFrom))
             ->count();
@@ -94,7 +101,9 @@ class ReportController extends Controller
             'data' => [
                 'products' => $products,
                 'summary' => [
-                    ['label' => 'Total Penjualan', 'value' => $totalRevenue, 'change' => 0, 'up' => true],
+                    ['label' => 'Total Penjualan', 'value' => $grossRevenue, 'change' => 0, 'up' => true],
+                    ['label' => 'Penjualan Sukses', 'value' => $successRevenue, 'change' => 0, 'up' => true],
+                    ['label' => 'Penjualan Batal', 'value' => $cancelledRevenue, 'change' => 0, 'up' => false],
                     ['label' => 'Total Pesanan', 'value' => $ordersCount, 'change' => 0, 'up' => true],
                     ['label' => 'Rata-rata Transaksi', 'value' => $avgOrderValue, 'change' => 0, 'up' => true],
                     ['label' => 'Pesanan Dibatalkan', 'value' => $cancelledCount, 'change' => 0, 'up' => false],
@@ -148,7 +157,7 @@ class ReportController extends Controller
                 'summary' => [
                     ['label' => 'Total Pelanggan', 'value' => $totalCustomers, 'change' => 0, 'up' => true],
                     ['label' => 'Pelanggan Aktif', 'value' => $activeCustomers, 'change' => 0, 'up' => true],
-                    ['label' => 'Rata-rata Pesanan / Pelanggan', 'value' => $avgOrders, 'change' => 0, 'up' => true],
+                    ['label' => 'Rata-rata Frekuensi Belanja', 'value' => $avgOrders, 'change' => 0, 'up' => true],
                     ['label' => 'LTV Pelanggan', 'value' => $avgLtv, 'change' => 0, 'up' => true],
                 ],
             ]
@@ -297,8 +306,29 @@ class ReportController extends Controller
                 $totalSessions += $sessions;
                 $totalNewUsers += $newUsers;
 
+                $humanReadablePath = match (true) {
+                    $pagePath === '/' => 'Beranda (Home)',
+                    str_starts_with($pagePath, '/product/') => 'Detail Produk',
+                    str_starts_with($pagePath, '/product') => 'Katalog Produk',
+                    str_starts_with($pagePath, '/sale') => 'Halaman Promo/Sale',
+                    str_starts_with($pagePath, '/cart') => 'Keranjang Belanja',
+                    str_starts_with($pagePath, '/checkout') => 'Halaman Checkout',
+                    str_starts_with($pagePath, '/admin/dashboard') => 'Admin Dashboard',
+                    str_starts_with($pagePath, '/admin/order') => 'Admin: Kelola Pesanan',
+                    str_starts_with($pagePath, '/admin/reports') => 'Admin: Laporan',
+                    str_starts_with($pagePath, '/admin/vouchers') => 'Admin: Voucher',
+                    str_starts_with($pagePath, '/admin/content/products') => 'Admin: Kelola Produk',
+                    str_starts_with($pagePath, '/customer/dashboard') => 'Profil Pelanggan',
+                    str_starts_with($pagePath, '/customer/myOrders') => 'Pesanan Pelanggan',
+                    str_starts_with($pagePath, '/search') => 'Pencarian Produk',
+                    str_starts_with($pagePath, '/auth/login') => 'Halaman Login',
+                    str_starts_with($pagePath, '/auth/register') => 'Halaman Daftar',
+                    default => $pagePath,
+                };
+
                 $pages[] = [
                     'page_path' => $pagePath,
+                    'human_readable_path' => $humanReadablePath,
                     'views' => $views,
                     'active_users' => $activeUsers,
                     'sessions' => $sessions,
