@@ -75,6 +75,7 @@ class LoyaltyController extends Controller
         $validated = $request->validate([
             'tiers' => 'required|array|min:1',
             'tiers.*.name' => 'required|string',
+            'tiers.*.label' => 'nullable|string',
             'tiers.*.min' => 'required|integer|min:0',
             'tiers.*.max' => 'nullable|integer',
             'tiers.*.perks' => 'required|array',

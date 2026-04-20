@@ -57,11 +57,11 @@ Route::get('/public/loyalty/tiers', [LoyaltyController::class, 'getPublicTiers']
 // Tidak memerlukan auth karena dipakai saat checkout (kalkulasi ongkir)
 // ─────────────────────────────────────────────────────────────────────────────
 Route::prefix('rajaongkir')->group(function () {
-    Route::get('/provinces',          [RajaOngkirController::class, 'getProvinces']);
-    Route::get('/cities',             [RajaOngkirController::class, 'getCities']);
-    Route::get('/subdistricts',       [RajaOngkirController::class, 'getSubdistricts']);
+    Route::get('/provinces', [RajaOngkirController::class, 'getProvinces']);
+    Route::get('/cities', [RajaOngkirController::class, 'getCities']);
+    Route::get('/subdistricts', [RajaOngkirController::class, 'getSubdistricts']);
     Route::get('/search-destination', [RajaOngkirController::class, 'searchDestination']);
-    Route::post('/cost',              [RajaOngkirController::class, 'checkCost']);
+    Route::post('/cost', [RajaOngkirController::class, 'checkCost']);
 });
 
 // Protected routes
@@ -148,11 +148,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Customer Loyalty
     Route::get('/customer/loyalty', [LoyaltyController::class, 'getLoyaltyData']);
 
-    // ─────────────────────────────────────────────────────────────────────────
     // RajaOngkir (Komerce) — Protected Routes
-    // Tracking resi membutuhkan auth (data sensitif milik customer)
-    // ─────────────────────────────────────────────────────────────────────────
     Route::get('/rajaongkir/track', [RajaOngkirController::class, 'trackShipment']);
 });
 
- 
