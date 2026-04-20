@@ -54,6 +54,19 @@ class ProductController extends Controller
             });
         }
 
+        if ($request->boolean('is_flash_sale')) {
+            $query->whereHas('promotions', function ($q) {
+                $q->where('type', 'flash_sale')
+                  ->where('is_active', true)
+                  ->where(function ($q2) {
+                      $q2->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+                  })
+                  ->where(function ($q2) {
+                      $q2->whereNull('ends_at')->orWhere('ends_at', '>=', now());
+                  });
+            });
+        }
+
         $products = $query->latest()->paginate($request->get('limit', 15));
 
         return response()->json([
