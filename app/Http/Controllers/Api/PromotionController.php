@@ -43,7 +43,30 @@ class PromotionController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        $promotion = ProductPromotion::create($validated);
+        // Validate SKU existence
+        if (!\App\Models\Product::where('sku', $validated['sku'])->exists()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Produk dengan SKU ini tidak ditemukan. Pastikan produk memiliki kode SKU di data produk.'
+            ], 422);
+        }
+
+        // Prevent duplicate promotion types for the same SKU
+        ProductPromotion::where('sku', $validated['sku'])
+            ->where('type', $validated['type'])
+            ->delete();
+
+        $data = $validated;
+        
+        if (!empty($data['starts_at'])) {
+            $data['starts_at'] = \Carbon\Carbon::parse($data['starts_at'])->startOfDay();
+        }
+        
+        if (!empty($data['ends_at'])) {
+            $data['ends_at'] = \Carbon\Carbon::parse($data['ends_at'])->endOfDay();
+        }
+
+        $promotion = ProductPromotion::create($data);
 
         return response()->json([
             'status' => 'success',
@@ -69,7 +92,27 @@ class PromotionController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        $promotion->update($validated);
+        if (isset($validated['sku']) && $validated['sku'] !== $promotion->sku) {
+            // Validate SKU existence
+            if (!\App\Models\Product::where('sku', $validated['sku'])->exists()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Produk dengan SKU ini tidak ditemukan.'
+                ], 422);
+            }
+        }
+
+        $data = $validated;
+
+        if (!empty($data['starts_at'])) {
+            $data['starts_at'] = \Carbon\Carbon::parse($data['starts_at'])->startOfDay();
+        }
+        
+        if (!empty($data['ends_at'])) {
+            $data['ends_at'] = \Carbon\Carbon::parse($data['ends_at'])->endOfDay();
+        }
+
+        $promotion->update($data);
 
         return response()->json([
             'status' => 'success',

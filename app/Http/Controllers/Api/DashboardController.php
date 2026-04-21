@@ -15,7 +15,9 @@ class DashboardController extends Controller
     public function index()
     {
         // ── Summary Stats ──────────────────────────────────
-        $totalRevenue = Order::where('status', 'DELIVERED')->sum('total_amount');
+        $totalRevenue = Order::sum('total_amount');
+        $successRevenue = Order::where('status', 'DELIVERED')->sum('total_amount');
+        $cancelledRevenue = Order::where('status', 'CANCELLED')->sum('total_amount');
         $totalOrders = Order::count();
         $totalUsers = User::whereIn('role', ['customer', 'b2b'])->count();
 
@@ -82,6 +84,8 @@ class DashboardController extends Controller
             'data' => [
                 'stats' => [
                     'total_revenue' => (float) $totalRevenue,
+                    'success_revenue' => (float) $successRevenue,
+                    'cancelled_revenue' => (float) $cancelledRevenue,
                     'total_orders' => $totalOrders,
                     'total_users' => $totalUsers,
                     'pending_orders' => $pendingOrders,
