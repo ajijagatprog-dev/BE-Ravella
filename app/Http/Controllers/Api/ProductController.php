@@ -136,6 +136,11 @@ class ProductController extends Controller
         $data = $validator->validated();
         $data['slug'] = Str::slug($data['name']) . '-' . uniqid();
 
+        // Auto-generate SKU if not provided
+        if (empty($data['sku'])) {
+            $data['sku'] = 'PRD-' . strtoupper(Str::random(4)) . '-' . rand(100, 999);
+        }
+
         // Handle legacy single image
         if ($request->hasFile('image')) {
             $imagePath = $request->file('image')->store('products', 'public');
@@ -279,6 +284,11 @@ class ProductController extends Controller
 
         if (isset($data['name']) && $data['name'] !== $product->name) {
             $data['slug'] = Str::slug($data['name']) . '-' . uniqid();
+        }
+
+        // Auto-generate SKU if it's currently empty and not provided in update
+        if (empty($product->sku) && empty($data['sku'])) {
+            $data['sku'] = 'PRD-' . strtoupper(Str::random(4)) . '-' . rand(100, 999);
         }
 
         if ($request->hasFile('image')) {
