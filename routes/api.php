@@ -38,6 +38,7 @@ Route::get('/products/{id}/reviews', [ReviewController::class, 'getProductReview
 
 Route::get('/news', [NewsController::class, 'index']);
 Route::get('/news/{id}', [NewsController::class, 'show']);
+Route::post('/news/{id}/view', [NewsController::class, 'recordView']);
 
 Route::post('/payments/webhook', [\App\Http\Controllers\Api\PaymentController::class, 'simulateWebhook']);
 

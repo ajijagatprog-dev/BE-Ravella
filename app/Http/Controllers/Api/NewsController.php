@@ -116,6 +116,28 @@ class NewsController extends Controller
         ]);
     }
 
+    /**
+     * Increment views counter for a news article (realtime tracking).
+     */
+    public function recordView(string $id)
+    {
+        $news = News::where('slug', $id)->orWhere('id', $id)->first();
+
+        if (!$news) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'News article not found'
+            ], 404);
+        }
+
+        $news->increment('views');
+
+        return response()->json([
+            'status' => 'success',
+            'views' => $news->fresh()->views,
+        ]);
+    }
+
     public function update(Request $request, string $id)
     {
         $news = News::find($id);
