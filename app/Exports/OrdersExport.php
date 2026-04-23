@@ -10,10 +10,14 @@ use Maatwebsite\Excel\Concerns\WithMapping;
 class OrdersExport implements FromCollection, WithHeadings, WithMapping
 {
     protected $userId;
+    protected $dateFrom;
+    protected $status;
 
-    public function __construct($userId = null)
+    public function __construct($userId = null, $dateFrom = null, $status = null)
     {
         $this->userId = $userId;
+        $this->dateFrom = $dateFrom;
+        $this->status = $status;
     }
 
     public function collection()
@@ -21,6 +25,12 @@ class OrdersExport implements FromCollection, WithHeadings, WithMapping
         $query = Order::with('user');
         if ($this->userId) {
             $query->where('user_id', $this->userId);
+        }
+        if ($this->dateFrom) {
+            $query->where('created_at', '>=', $this->dateFrom);
+        }
+        if ($this->status && $this->status !== 'all') {
+            $query->where('status', strtoupper($this->status));
         }
         return $query->latest()->get();
     }

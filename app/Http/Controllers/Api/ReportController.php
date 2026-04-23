@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\DB;
 use App\Exports\UsersExport;
 use App\Exports\OrdersExport;
 use App\Exports\ProductsExport;
+use App\Exports\SalesExport;
+use App\Exports\VouchersExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Google\Analytics\Data\V1beta\Client\BetaAnalyticsDataClient;
 use Google\Analytics\Data\V1beta\DateRange;
@@ -30,6 +32,8 @@ class ReportController extends Controller
     {
         $user = $request->user();
         $userId = null;
+        $period = $request->query('period', 'all');
+        $dateFrom = $this->getDateFrom($period);
 
         // If not admin, force export only their own orders
         if ($user->role !== 'admin') {
@@ -40,13 +44,29 @@ class ReportController extends Controller
         }
 
         $fileName = $userId ? 'orders_report_' : 'all_orders_';
-        return Excel::download(new OrdersExport($userId), $fileName . now()->format('Y-m-d') . '.xlsx');
+        $status = $request->query('status', 'all');
+        return Excel::download(new OrdersExport($userId, $dateFrom, $status), $fileName . now()->format('Y-m-d') . '.xlsx');
     }
 
     // Export All Products (Stock Report)
     public function exportProducts()
     {
         return Excel::download(new ProductsExport, 'products_stock_' . now()->format('Y-m-d') . '.xlsx');
+    }
+
+    // Export Product-wise Sales Report (Admin Reports / Sales Tab)
+    public function exportSales(Request $request)
+    {
+        $period = $request->query('period', 'all');
+        $dateFrom = $this->getDateFrom($period);
+
+        return Excel::download(new SalesExport($dateFrom), 'sales_report_' . now()->format('Y-m-d') . '.xlsx');
+    }
+
+    // Export All Vouchers
+    public function exportVouchers()
+    {
+        return Excel::download(new VouchersExport, 'vouchers_database_' . now()->format('Y-m-d') . '.xlsx');
     }
 
     // GET: /api/admin/reports/sales

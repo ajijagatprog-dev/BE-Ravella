@@ -137,6 +137,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/export/users', [ReportController::class, 'exportUsers']);
     Route::get('/admin/export/orders', [ReportController::class, 'exportOrders']);
     Route::get('/admin/export/products', [ReportController::class, 'exportProducts']);
+    Route::get('/admin/export/sales', [ReportController::class, 'exportSales']);
+    Route::get('/admin/export/vouchers', [ReportController::class, 'exportVouchers']);
     Route::get('/customer/export/orders', [ReportController::class, 'exportOrders']);
 
     // Customer Portal
