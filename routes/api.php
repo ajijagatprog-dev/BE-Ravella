@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\VoucherController;
 use App\Http\Controllers\Api\RajaOngkirController;
 use App\Http\Controllers\Api\PromotionController;
 use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\BannerController;
 
 /*
 |--------------------------------------------------------------------------
@@ -54,6 +55,9 @@ Route::get('/vouchers/validate', [VoucherController::class, 'check']);
 
 // Public loyalty tiers (for homepage showcase)
 Route::get('/public/loyalty/tiers', [LoyaltyController::class, 'getPublicTiers']);
+
+// Public banners (for dynamic banner images)
+Route::get('/public/banners/{page}', [BannerController::class, 'getPublicBanners']);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RajaOngkir (Komerce) — Public Routes
@@ -126,6 +130,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/admin/promotions/{id}', [PromotionController::class, 'update']);
     Route::delete('/admin/promotions/{id}', [PromotionController::class, 'destroy']);
     Route::post('/admin/promotions/import', [PromotionController::class, 'import']);
+
+    // Banner management (Admin)
+    Route::get('/admin/banners', [BannerController::class, 'index']);
+    Route::post('/admin/banners/{id}', [BannerController::class, 'update']);
+    Route::put('/admin/banners/{id}/toggle', [BannerController::class, 'toggleActive']);
 
     // Review management (Admin)
     Route::get('/admin/reviews', [ReviewController::class, 'index']);
