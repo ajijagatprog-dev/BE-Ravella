@@ -135,6 +135,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/banners', [BannerController::class, 'index']);
     Route::post('/admin/banners/{id}', [BannerController::class, 'update']);
     Route::put('/admin/banners/{id}/toggle', [BannerController::class, 'toggleActive']);
+    Route::delete('/admin/banners/{id}/image', [BannerController::class, 'deleteImage']);
 
     // Review management (Admin)
     Route::get('/admin/reviews', [ReviewController::class, 'index']);

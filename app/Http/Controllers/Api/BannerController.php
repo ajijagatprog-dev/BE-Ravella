@@ -120,4 +120,37 @@ class BannerController extends Controller
             'data' => $banner,
         ]);
     }
+
+    /**
+     * Delete a banner image (reset to default) (admin).
+     */
+    public function deleteImage($id)
+    {
+        $banner = Banner::find($id);
+
+        if (!$banner) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Banner not found',
+            ], 404);
+        }
+
+        // Delete the image file from storage
+        if ($banner->getRawOriginal('image')) {
+            $oldPath = $banner->getRawOriginal('image');
+            $oldPath = str_replace('/storage/', '', $oldPath);
+            $oldPath = str_replace('storage/', '', $oldPath);
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        // Reset image to null (will fall back to default)
+        $banner->image = null;
+        $banner->save();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Banner image deleted successfully',
+            'data' => $banner,
+        ]);
+    }
 }
