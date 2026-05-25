@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\Voucher;
+use App\Models\LoyaltySetting;
+use App\Models\LoyaltyTransaction;
 use Carbon\Carbon;
 use App\Services\TrackingService;
 use Illuminate\Support\Facades\Log;
@@ -79,8 +81,54 @@ class OrderController extends Controller
             }
         }
 
+        // ── Cek Tier Perk: Free Ongkir ─────────────────────────────────────────
+        // Jika customer berada di tier yang memiliki perk gratis ongkir,
+        // ongkir akan di-set 0 secara otomatis (berlaku saat checkout, bukan setelah DELIVERED).
+        $tierFreeShipping = false;
+        $tierFreeShippingMin = null;
+
+        $loyaltyEnabled = LoyaltySetting::getValue('loyalty_enabled', '1') === '1';
+        if ($loyaltyEnabled) {
+            $totalSpentByUser = Order::where('user_id', $user->id)
+                ->where('status', 'DELIVERED')
+                ->sum('total_amount');
+
+            $tiers = json_decode(LoyaltySetting::getValue('tiers', '[]'), true);
+            usort($tiers, fn($a, $b) => ($b['min'] ?? 0) - ($a['min'] ?? 0));
+
+            $currentTierPerks = [];
+            foreach ($tiers as $tier) {
+                if ($totalSpentByUser >= ($tier['min'] ?? 0)) {
+                    $currentTierPerks = $tier['perks'] ?? [];
+                    break;
+                }
+            }
+
+            // Parse perks yang mengandung "free ongkir" atau "gratis ongkir"
+            foreach ($currentTierPerks as $perk) {
+                $perkLower = strtolower($perk);
+                if (str_contains($perkLower, 'free ongkir') || str_contains($perkLower, 'gratis ongkir')) {
+                    $tierFreeShipping = true;
+                    // Coba ekstrak nilai minimum dari perk (e.g. "Free ongkir > Rp 50.000")
+                    preg_match('/rp\s*([\d\.]+)/i', $perk, $matches);
+                    if (!empty($matches[1])) {
+                        $tierFreeShippingMin = (float) str_replace('.', '', $matches[1]);
+                    } else {
+                        $tierFreeShippingMin = 0; // tanpa syarat minimum
+                    }
+                    break;
+                }
+            }
+        }
+
         // Add shipping cost (Use provided RajaOngkir cost or fallback)
-        $shippingFee = $validated['shipping_cost'] ?? ($subtotal > 500000 ? 0 : 25000);
+        $shippingFee = $validated['shipping_cost'] ?? 0;
+
+        // Terapkan free shipping dari tier perk jika memenuhi syarat
+        if ($tierFreeShipping && ($tierFreeShippingMin === null || $subtotal >= $tierFreeShippingMin)) {
+            $shippingFee = 0;
+        }
+
         $totalAmount = $subtotal - $discountAmount + $shippingFee;
         $totalAmount = max(0, $totalAmount);
 
@@ -180,7 +228,7 @@ class OrderController extends Controller
             try {
                 // 1. WhatsApp Configuration
                 $fonnte = new FonnteService();
-                $customerPhone = $address->phone_number; 
+                $customerPhone = $address->phone_number;
                 $adminPhone = config('fonnte.admin_phone');
 
                 // 2. Format Currency
@@ -189,21 +237,23 @@ class OrderController extends Controller
 
                 // 3. Messages Setup
                 $waCustomerMsg = "Halo {$user->name},\n\nTerima kasih telah berbelanja di Ravella!\n\nPesanan Anda dengan nomor *{$order->order_number}* berhasil dibuat.\nTotal Tagihan: *{$formattedTotal}*\n\nSilakan selesaikan pembayaran langsung melalui sistem kami pada link berikut (jika belum):\n{$paymentUrl}\n\nAbaikan pesan ini jika Anda sudah mambayar. Terima kasih.\n\n_Pesan ini dikirim secara otomatis._";
-                
+
                 $waAdminMsg = "🚨 *PESANAN BARU MASUK* 🚨\n\nNo. Order: {$order->order_number}\nPelanggan: {$user->name}\nTotal: {$formattedTotal}\nStatus: PENDING (Menunggu Pembayaran)\n\nSilakan pantau melalui Dashboard Admin.";
 
                 // 4. Send WhatsApp Executions
-                if ($customerPhone) $fonnte->sendMessage($customerPhone, $waCustomerMsg);
-                if ($adminPhone) $fonnte->sendMessage($adminPhone, $waAdminMsg);
+                if ($customerPhone)
+                    $fonnte->sendMessage($customerPhone, $waCustomerMsg);
+                if ($adminPhone)
+                    $fonnte->sendMessage($adminPhone, $waAdminMsg);
 
                 // 5. Send Emails
                 Mail::to($user->email)->send(new OrderSuccessCustomerMail($order));
-                
+
                 $adminEmail = config('mail.admin_email');
                 if ($adminEmail) {
                     Mail::to($adminEmail)->send(new NewOrderAdminMail($order));
                 }
-                
+
                 Log::info("All notifications (WA & Email) queued successfully for order: {$order->order_number}");
             } catch (\Exception $e) {
                 // Prevent order failure if notifications error out (e.g., SMTP timeout)
@@ -283,10 +333,10 @@ class OrderController extends Controller
         // Auto-update status to SHIPPED if tracking number is newly provided and state is processing or pending
         $newStatus = $validated['status'];
         if (!empty($validated['tracking_number']) && in_array($previousStatus, ['PENDING', 'PROCESSING'])) {
-             // Automasi: jika diinput resi, otomatis status berubah jadi SHIPPED
-             if (!empty($validated['courier'])) {
-                 $newStatus = 'SHIPPED';
-             }
+            // Automasi: jika diinput resi, otomatis status berubah jadi SHIPPED
+            if (!empty($validated['courier'])) {
+                $newStatus = 'SHIPPED';
+            }
         }
 
         $order->update([

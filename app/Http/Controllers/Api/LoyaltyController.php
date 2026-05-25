@@ -7,7 +7,10 @@ use App\Models\LoyaltyTransaction;
 use App\Models\LoyaltySetting;
 use App\Models\Order;
 use App\Models\User;
+use App\Models\Voucher;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class LoyaltyController extends Controller
 {
@@ -200,6 +203,166 @@ class LoyaltyController extends Controller
         ]);
     }
 
+    // GET: /api/customer/loyalty/rewards
+    // Returns: active vouchers (as redeemable rewards) + tier perks
+    public function getCustomerRewards(Request $request)
+    {
+        $user = $request->user();
+        $enabled = LoyaltySetting::getValue('loyalty_enabled', '1') === '1';
+
+        if (!$enabled) {
+            return response()->json(['status' => 'success', 'data' => []]);
+        }
+
+        $userPoints = $user->loyalty_points ?? 0;
+
+        // ── 1. Tier Perks (based on current tier) ──────────────────────────────
+        $totalSpent = Order::where('user_id', $user->id)
+            ->where('status', 'DELIVERED')
+            ->sum('total_amount');
+
+        $tierData = $this->calculateTier($totalSpent);
+        $tierPerks = array_map(fn($perk) => [
+            'id' => 'perk_' . md5($perk['label']),
+            'title' => $perk['label'],
+            'subtitle' => 'Tier Benefit',
+            'description' => $perk['desc'],
+            'points_required' => 0,
+            'type' => 'perk',
+            'canRedeem' => true,
+        ], $tierData['benefits']);
+
+        // ── 2. Active Vouchers (redeemable with points) ───────────────────────
+        // Ambil voucher yang aktif dan belum expired
+        $activeVouchers = Voucher::where('is_active', true)
+            ->where(function ($q) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>=', now());
+            })
+            ->where(function ($q) {
+                $q->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+            })
+            ->get();
+
+        $redemptionValue = (int) LoyaltySetting::getValue('redemption_value', '5');
+
+        $voucherRewards = $activeVouchers->map(function ($voucher) use ($redemptionValue, $userPoints) {
+            // Calculate points needed to cover the voucher's fixed value
+            // For percent vouchers: estimate points based on max_discount or a base value
+            $voucherValue = $voucher->type === 'fixed'
+                ? (float) $voucher->value
+                : (float) ($voucher->max_discount ?? 50000);
+
+            // Points needed = voucherValue / redemptionValue
+            $pointsNeeded = $redemptionValue > 0
+                ? (int) ceil($voucherValue / $redemptionValue)
+                : 999999;
+
+            $title = $voucher->type === 'percent'
+                ? "{$voucher->value}% OFF"
+                : 'Rp ' . number_format($voucher->value, 0, ',', '.');
+
+            return [
+                'id' => 'voucher_' . $voucher->id,
+                'voucher_id' => $voucher->id,
+                'voucher_code' => $voucher->code,
+                'title' => $title,
+                'subtitle' => $voucher->description ?? 'Voucher Diskon',
+                'description' => $voucher->description ?? 'Tukarkan poin Anda dengan voucher diskon ini.',
+                'points_required' => $pointsNeeded,
+                'type' => 'voucher',
+                'canRedeem' => true,
+                'min_purchase' => (float) ($voucher->min_purchase ?? 0),
+            ];
+        })->values()->toArray();
+
+        $rewards = array_merge($tierPerks, $voucherRewards);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'rewards' => $rewards,
+                'user_points' => $userPoints,
+            ]
+        ]);
+    }
+
+    // POST: /api/customer/loyalty/redeem
+    // Body: { voucher_id: int, points_to_spend: int }
+    public function redeemReward(Request $request)
+    {
+        $enabled = LoyaltySetting::getValue('loyalty_enabled', '1') === '1';
+        if (!$enabled) {
+            return response()->json(['status' => 'error', 'message' => 'Sistem loyalty sedang tidak aktif.'], 403);
+        }
+
+        $validated = $request->validate([
+            'voucher_id' => 'required|integer|exists:vouchers,id',
+            'points_to_spend' => 'required|integer|min:1',
+        ]);
+
+        $user = $request->user();
+        $userPoints = $user->loyalty_points ?? 0;
+
+        if ($userPoints < $validated['points_to_spend']) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Poin tidak cukup. Poin Anda: ' . $userPoints . ', dibutuhkan: ' . $validated['points_to_spend'],
+            ], 422);
+        }
+
+        $voucher = Voucher::findOrFail($validated['voucher_id']);
+
+        if (!$voucher->isValid()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Voucher sudah tidak aktif atau telah kadaluarsa.',
+            ], 422);
+        }
+
+        // Check max_per_user
+        if ($voucher->max_per_user) {
+            $userUsageCount = LoyaltyTransaction::where('user_id', $user->id)
+                ->where('type', 'redeem')
+                ->where('reference_type', 'voucher')
+                ->where('reference_id', $voucher->id)
+                ->count();
+            if ($userUsageCount >= $voucher->max_per_user) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Anda sudah mencapai batas maksimum penukaran voucher ini.',
+                ], 422);
+            }
+        }
+
+        DB::transaction(function () use ($user, $validated, $voucher) {
+            // Deduct points
+            $user->decrement('loyalty_points', $validated['points_to_spend']);
+
+            // Record transaction
+            LoyaltyTransaction::create([
+                'user_id' => $user->id,
+                'type' => 'redeem',
+                'points' => $validated['points_to_spend'],
+                'description' => 'Penukaran poin untuk voucher ' . $voucher->code,
+                'reference_type' => 'voucher',
+                'reference_id' => $voucher->id,
+            ]);
+        });
+
+        Log::info("User {$user->id} redeemed {$validated['points_to_spend']} points for voucher {$voucher->code}");
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Berhasil! Voucher ' . $voucher->code . ' telah ditambahkan ke akun Anda.',
+            'data' => [
+                'voucher_code' => $voucher->code,
+                'voucher_description' => $voucher->description,
+                'points_spent' => $validated['points_to_spend'],
+                'remaining_points' => ($user->loyalty_points ?? 0),
+            ]
+        ]);
+    }
+
     private function calculateTier(float $totalSpent): array
     {
         $tiers = json_decode(LoyaltySetting::getValue('tiers', '[]'), true);
@@ -247,5 +410,70 @@ class LoyaltyController extends Controller
         $progress = $nextMin > $currentMin ? (($totalSpent - $currentMin) / ($nextMin - $currentMin)) * 100 : 0;
 
         return ['percent' => round(min($progress, 100), 0), 'next_tier' => $nextTierName];
+    }
+
+    // POST: /api/admin/loyalty/sync-points
+    // Retroactively award points for DELIVERED orders that have no loyalty transaction recorded.
+    public function syncLoyaltyPoints()
+    {
+        $multiplier = (int) LoyaltySetting::getValue('earning_multiplier', '10');
+
+        $deliveredOrders = Order::where('status', 'DELIVERED')
+            ->whereNotExists(function ($query) {
+                $query->select(DB::raw(1))
+                    ->from('loyalty_transactions')
+                    ->whereColumn('loyalty_transactions.reference_id', 'orders.id')
+                    ->where('loyalty_transactions.reference_type', 'order')
+                    ->where('loyalty_transactions.type', 'earn');
+            })
+            ->with('user')
+            ->get();
+
+        $synced = 0;
+        $skipped = 0;
+        $details = [];
+
+        foreach ($deliveredOrders as $order) {
+            $user = $order->user;
+            if (!$user) {
+                $skipped++;
+                continue;
+            }
+
+            $pointsToAward = max(1, floor($order->total_amount / 10000) * $multiplier);
+
+            DB::transaction(function () use ($user, $order, $pointsToAward) {
+                LoyaltyTransaction::create([
+                    'user_id' => $user->id,
+                    'type' => 'earn',
+                    'points' => $pointsToAward,
+                    'description' => "Sync poin - Purchase #{$order->order_number}",
+                    'reference_type' => 'order',
+                    'reference_id' => $order->id,
+                ]);
+                $user->increment('loyalty_points', $pointsToAward);
+            });
+
+            $details[] = [
+                'order_number' => $order->order_number,
+                'user' => $user->name,
+                'amount' => $order->total_amount,
+                'points_awarded' => $pointsToAward,
+            ];
+            $synced++;
+        }
+
+        Log::info("Loyalty sync completed: {$synced} orders synced, {$skipped} skipped.");
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "Sync selesai. {$synced} order berhasil disinkronkan, {$skipped} dilewati.",
+            'data' => [
+                'synced_count' => $synced,
+                'skipped_count' => $skipped,
+                'multiplier_used' => $multiplier,
+                'details' => $details,
+            ],
+        ]);
     }
 }

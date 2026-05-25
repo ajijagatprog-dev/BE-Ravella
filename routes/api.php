@@ -105,6 +105,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/admin/loyalty/settings', [LoyaltyController::class, 'updateSettings']);
     Route::get('/admin/loyalty/tiers', [LoyaltyController::class, 'getTiers']);
     Route::put('/admin/loyalty/tiers', [LoyaltyController::class, 'updateTiers']);
+    Route::post('/admin/loyalty/sync-points', [LoyaltyController::class, 'syncLoyaltyPoints']);
 
     // Admin Dashboard
     Route::get('/admin/dashboard', [DashboardController::class, 'index']);
@@ -169,6 +170,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Customer Loyalty
     Route::get('/customer/loyalty', [LoyaltyController::class, 'getLoyaltyData']);
+    Route::get('/customer/loyalty/rewards', [LoyaltyController::class, 'getCustomerRewards']);
+    Route::post('/customer/loyalty/redeem', [LoyaltyController::class, 'redeemReward']);
 
     // RajaOngkir (Komerce) — Protected Routes
     Route::get('/rajaongkir/track', [RajaOngkirController::class, 'trackShipment']);
