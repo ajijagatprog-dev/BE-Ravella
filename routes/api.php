@@ -172,6 +172,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/customer/loyalty', [LoyaltyController::class, 'getLoyaltyData']);
     Route::get('/customer/loyalty/rewards', [LoyaltyController::class, 'getCustomerRewards']);
     Route::post('/customer/loyalty/redeem', [LoyaltyController::class, 'redeemReward']);
+    Route::get('/customer/loyalty/claimable', [LoyaltyController::class, 'getClaimableRewards']);
+    Route::post('/customer/loyalty/claim', [LoyaltyController::class, 'claimReward']);
 
     // RajaOngkir (Komerce) — Protected Routes
     Route::get('/rajaongkir/track', [RajaOngkirController::class, 'trackShipment']);

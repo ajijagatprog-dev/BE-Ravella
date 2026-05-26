@@ -22,9 +22,11 @@ use Google\Analytics\Data\V1beta\Metric;
 class ReportController extends Controller
 {
     // Export All Users (Admin User Management)
-    public function exportUsers()
+    public function exportUsers(Request $request)
     {
-        return Excel::download(new UsersExport, 'users_database_' . now()->format('Y-m-d') . '.xlsx');
+        $dateFrom = $request->query('date_from');
+        $dateTo = $request->query('date_to');
+        return Excel::download(new UsersExport($dateFrom, $dateTo), 'users_database_' . now()->format('Y-m-d') . '.xlsx');
     }
 
     // Export All Orders (Admin Dashboard / Reports / B2B)

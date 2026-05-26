@@ -23,21 +23,31 @@ class UserController extends Controller
             $query->where('role', $request->role);
         }
 
+        // Date range filter
+        if ($request->filled('date_from') && $request->filled('date_to')) {
+            $query->whereBetween('created_at', [
+                Carbon::parse($request->date_from)->startOfDay(),
+                Carbon::parse($request->date_to)->endOfDay()
+            ]);
+        }
+
         // Search
         if ($request->has('search') && $request->search) {
             $searchTerm = $request->search;
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('name', 'like', '%' . $searchTerm . '%')
-                  ->orWhere('email', 'like', '%' . $searchTerm . '%')
-                  ->orWhere('company_name', 'like', '%' . $searchTerm . '%')
-                  ->orWhere('npwp', 'like', '%' . $searchTerm . '%');
+                    ->orWhere('email', 'like', '%' . $searchTerm . '%')
+                    ->orWhere('company_name', 'like', '%' . $searchTerm . '%')
+                    ->orWhere('npwp', 'like', '%' . $searchTerm . '%');
             });
         }
 
         // Include latest order for "Last Transaction" column
-        $query->with(['orders' => function ($q) {
-            $q->orderBy('created_at', 'desc')->limit(1);
-        }]);
+        $query->with([
+            'orders' => function ($q) {
+                $q->orderBy('created_at', 'desc')->limit(1);
+            }
+        ]);
 
         $users = $query->latest()->paginate($request->get('limit', 10));
 
@@ -87,22 +97,48 @@ class UserController extends Controller
     }
 
     // GET: /api/admin/users/stats
-    public function getUserStats()
+    // GET: /api/admin/users/stats
+    public function getUserStats(Request $request)
     {
         $now = Carbon::now();
-        $startOfMonth = $now->copy()->startOfMonth();
-        $startOfLastMonth = $now->copy()->subMonth()->startOfMonth();
-        $endOfLastMonth = $now->copy()->subMonth()->endOfMonth();
+        $dateFrom = $request->query('date_from'); // YYYY-MM-DD
+        $dateTo = $request->query('date_to');   // YYYY-MM-DD
+
+        if ($dateFrom && $dateTo) {
+            $currentStart = Carbon::parse($dateFrom)->startOfDay();
+            $currentEnd = Carbon::parse($dateTo)->endOfDay();
+
+            // Rentang pembanding: durasi yang sama sebelum tanggal mulai
+            $rangeDays = $currentStart->diffInDays($currentEnd) + 1;
+            $previousEnd = $currentStart->copy()->subDay()->endOfDay();
+            $previousStart = $previousEnd->copy()->subDays($rangeDays - 1)->startOfDay();
+
+            $compareStart = $currentStart;
+        } else {
+            $currentStart = null;
+            $currentEnd = null;
+            $compareStart = $now->copy()->startOfMonth();
+            $previousStart = $now->copy()->subMonth()->startOfMonth();
+            $previousEnd = $now->copy()->subMonth()->endOfMonth();
+        }
 
         // Total non-admin users
-        $totalUsers = User::whereIn('role', ['customer', 'b2b'])->count();
+        $totalUsersQuery = User::whereIn('role', ['customer', 'b2b']);
+        if ($currentStart) {
+            $totalUsersQuery->whereBetween('created_at', [$currentStart, $currentEnd]);
+        }
+        $totalUsers = $totalUsersQuery->count();
 
-        $newThisMonth = User::whereIn('role', ['customer', 'b2b'])
-            ->where('created_at', '>=', $startOfMonth)
-            ->count();
+        $newThisMonthQuery = User::whereIn('role', ['customer', 'b2b']);
+        if ($currentStart) {
+            $newThisMonthQuery->whereBetween('created_at', [$currentStart, $currentEnd]);
+        } else {
+            $newThisMonthQuery->where('created_at', '>=', $compareStart);
+        }
+        $newThisMonth = $newThisMonthQuery->count();
 
         $newLastMonth = User::whereIn('role', ['customer', 'b2b'])
-            ->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])
+            ->whereBetween('created_at', [$previousStart, $previousEnd])
             ->count();
 
         $usersTrend = $newLastMonth > 0
@@ -110,22 +146,41 @@ class UserController extends Controller
             : ($newThisMonth > 0 ? 100 : 0);
 
         // B2B Partners (approved)
-        $b2bPartners = User::where('role', 'b2b')->where('b2b_status', 'approved')->count();
+        $b2bPartnersQuery = User::where('role', 'b2b')->where('b2b_status', 'approved');
+        if ($currentStart) {
+            $b2bPartnersQuery->whereBetween('created_at', [$currentStart, $currentEnd]);
+        }
+        $b2bPartners = $b2bPartnersQuery->count();
 
-        $b2bNewThisMonth = User::where('role', 'b2b')
-            ->where('b2b_status', 'approved')
-            ->where('created_at', '>=', $startOfMonth)
-            ->count();
+        $b2bNewThisMonthQuery = User::where('role', 'b2b')->where('b2b_status', 'approved');
+        if ($currentStart) {
+            $b2bNewThisMonthQuery->whereBetween('created_at', [$currentStart, $currentEnd]);
+        } else {
+            $b2bNewThisMonthQuery->where('created_at', '>=', $compareStart);
+        }
+        $b2bNewThisMonth = $b2bNewThisMonthQuery->count();
 
         // Pending verifications
-        $pendingVerifications = User::where('role', 'b2b')->where('b2b_status', 'pending')->count();
+        $pendingVerificationsQuery = User::where('role', 'b2b')->where('b2b_status', 'pending');
+        if ($currentStart) {
+            $pendingVerificationsQuery->whereBetween('created_at', [$currentStart, $currentEnd]);
+        }
+        $pendingVerifications = $pendingVerificationsQuery->count();
 
         // Retail customers
-        $retailCustomers = User::where('role', 'customer')->count();
+        $retailCustomersQuery = User::where('role', 'customer');
+        if ($currentStart) {
+            $retailCustomersQuery->whereBetween('created_at', [$currentStart, $currentEnd]);
+        }
+        $retailCustomers = $retailCustomersQuery->count();
 
-        $retailNewThisMonth = User::where('role', 'customer')
-            ->where('created_at', '>=', $startOfMonth)
-            ->count();
+        $retailNewThisMonthQuery = User::where('role', 'customer');
+        if ($currentStart) {
+            $retailNewThisMonthQuery->whereBetween('created_at', [$currentStart, $currentEnd]);
+        } else {
+            $retailNewThisMonthQuery->where('created_at', '>=', $compareStart);
+        }
+        $retailNewThisMonth = $retailNewThisMonthQuery->count();
 
         return response()->json([
             'status' => 'success',

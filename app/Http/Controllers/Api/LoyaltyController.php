@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\LoyaltyTransaction;
 use App\Models\LoyaltySetting;
+use App\Models\LoyaltyClaim;
 use App\Models\Order;
 use App\Models\User;
 use App\Models\Voucher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class LoyaltyController extends Controller
 {
@@ -361,6 +363,207 @@ class LoyaltyController extends Controller
                 'remaining_points' => ($user->loyalty_points ?? 0),
             ]
         ]);
+    }
+
+    // ─── GET: /api/customer/loyalty/claimable ────────────────────────────────────
+    // Returns tier claimable rewards yang belum & sudah diklaim customer
+    // ─────────────────────────────────────────────────────────────────────────────
+    public function getClaimableRewards(Request $request)
+    {
+        $user = $request->user();
+        $enabled = LoyaltySetting::getValue('loyalty_enabled', '1') === '1';
+        if (!$enabled) {
+            return response()->json(['status' => 'success', 'data' => ['claimable' => [], 'claimed' => []]]);
+        }
+
+        $totalSpent = Order::where('user_id', $user->id)
+            ->where('status', 'DELIVERED')
+            ->sum('total_amount');
+
+        $tiers = json_decode(LoyaltySetting::getValue('tiers', '[]'), true);
+        usort($tiers, fn($a, $b) => ($b['min'] ?? 0) - ($a['min'] ?? 0));
+
+        $unlockedRewards = [];
+        foreach ($tiers as $tier) {
+            if ($totalSpent >= ($tier['min'] ?? 0)) {
+                foreach ($tier['claimable_rewards'] ?? [] as $reward) {
+                    if (!isset($reward['id'])) continue;
+                    $reward['tier_name'] = $tier['name'];
+                    $unlockedRewards[] = $reward;
+                }
+                break;
+            }
+        }
+
+        if (empty($unlockedRewards)) {
+            return response()->json(['status' => 'success', 'data' => ['claimable' => [], 'claimed' => []]]);
+        }
+
+        $claimedIds = LoyaltyClaim::where('user_id', $user->id)->pluck('reward_id')->toArray();
+
+        $claimable = [];
+        $claimed   = [];
+
+        foreach ($unlockedRewards as $reward) {
+            $rewardId  = $reward['id'];
+            $isClaimed = in_array($rewardId, $claimedIds);
+
+            $voucherLabel = null;
+            if (($reward['type'] ?? '') === 'voucher_code' && isset($reward['voucher_id'])) {
+                $v = Voucher::find($reward['voucher_id']);
+                if ($v) {
+                    $voucherLabel = $v->type === 'percent'
+                        ? "Diskon {$v->value}%"
+                        : 'Rp ' . number_format((float) $v->value, 0, ',', '.');
+                }
+            }
+
+            $entry = [
+                'id'            => $rewardId,
+                'label'         => $reward['label'] ?? 'Tier Reward',
+                'type'          => $reward['type'] ?? 'bonus_points',
+                'tier_name'     => $reward['tier_name'],
+                'points'        => $reward['points'] ?? null,
+                'voucher_id'    => $reward['voucher_id'] ?? null,
+                'voucher_label' => $voucherLabel,
+                'one_time'      => $reward['one_time'] ?? true,
+                'is_claimed'    => $isClaimed,
+            ];
+
+            if ($isClaimed) {
+                $claim = LoyaltyClaim::where('user_id', $user->id)->where('reward_id', $rewardId)->first();
+                $entry['claimed_value'] = $claim?->reward_value;
+                $entry['claimed_at']    = $claim?->claimed_at?->format('d M Y');
+                $claimed[] = $entry;
+            } else {
+                $claimable[] = $entry;
+            }
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => ['claimable' => $claimable, 'claimed' => $claimed],
+        ]);
+    }
+
+    // ─── POST: /api/customer/loyalty/claim ──────────────────────────────────────
+    // Body: { reward_id: string }
+    // ─────────────────────────────────────────────────────────────────────────────
+    public function claimReward(Request $request)
+    {
+        $enabled = LoyaltySetting::getValue('loyalty_enabled', '1') === '1';
+        if (!$enabled) {
+            return response()->json(['status' => 'error', 'message' => 'Sistem loyalty sedang tidak aktif.'], 403);
+        }
+
+        $validated = $request->validate(['reward_id' => 'required|string']);
+        $user = $request->user();
+
+        // Cek sudah pernah diklaim
+        if (LoyaltyClaim::where('user_id', $user->id)->where('reward_id', $validated['reward_id'])->exists()) {
+            return response()->json(['status' => 'error', 'message' => 'Reward ini sudah pernah Anda klaim.'], 422);
+        }
+
+        // Cari reward di config tier yang sesuai dengan total belanja user
+        $totalSpent = Order::where('user_id', $user->id)->where('status', 'DELIVERED')->sum('total_amount');
+        $tiers = json_decode(LoyaltySetting::getValue('tiers', '[]'), true);
+        usort($tiers, fn($a, $b) => ($b['min'] ?? 0) - ($a['min'] ?? 0));
+
+        $foundReward = null;
+        $foundTier   = null;
+        foreach ($tiers as $tier) {
+            if ($totalSpent >= ($tier['min'] ?? 0)) {
+                foreach ($tier['claimable_rewards'] ?? [] as $reward) {
+                    if (($reward['id'] ?? '') === $validated['reward_id']) {
+                        $foundReward = $reward;
+                        $foundTier   = $tier['name'];
+                        break 2;
+                    }
+                }
+                break;
+            }
+        }
+
+        if (!$foundReward) {
+            return response()->json(['status' => 'error', 'message' => 'Reward tidak ditemukan atau Anda belum memenuhi syarat.'], 422);
+        }
+
+        $rewardType   = $foundReward['type'] ?? 'bonus_points';
+        $rewardValue  = null;
+        $message      = '';
+        $responseData = [];
+
+        DB::transaction(function () use ($user, $foundReward, $foundTier, $rewardType, $validated, &$rewardValue, &$message, &$responseData) {
+            if ($rewardType === 'bonus_points') {
+                $pts = (int) ($foundReward['points'] ?? 0);
+                if ($pts <= 0) throw new \Exception('Jumlah poin reward tidak valid.');
+
+                $user->increment('loyalty_points', $pts);
+                LoyaltyTransaction::create([
+                    'user_id'        => $user->id,
+                    'type'           => 'earn',
+                    'points'         => $pts,
+                    'description'    => 'Tier Reward: ' . ($foundReward['label'] ?? $foundTier),
+                    'reference_type' => 'loyalty_claim',
+                    'reference_id'   => 0,
+                ]);
+                $rewardValue  = (string) $pts;
+                $message      = "Selamat! {$pts} poin telah ditambahkan ke akun Anda.";
+                $responseData = ['type' => 'bonus_points', 'points_awarded' => $pts, 'new_balance' => ($user->loyalty_points ?? 0)];
+
+            } elseif ($rewardType === 'voucher_code') {
+                $voucherId = $foundReward['voucher_id'] ?? null;
+                if (!$voucherId) throw new \Exception('Konfigurasi voucher tidak lengkap.');
+
+                $voucher = Voucher::find($voucherId);
+                if (!$voucher || !$voucher->isValid()) {
+                    throw new \Exception('Voucher tidak tersedia atau sudah kadaluarsa.');
+                }
+
+                // Buat kode unik untuk customer ini
+                $uniqueCode = strtoupper($voucher->code . '_' . Str::random(4));
+                Voucher::create([
+                    'code'         => $uniqueCode,
+                    'description'  => ($voucher->description ?? '') . ' (Loyalty Reward)',
+                    'type'         => $voucher->type,
+                    'value'        => $voucher->value,
+                    'min_purchase' => $voucher->min_purchase,
+                    'max_discount' => $voucher->max_discount,
+                    'max_uses'     => 1,
+                    'max_per_user' => 1,
+                    'is_active'    => true,
+                    'expires_at'   => now()->addDays(90),
+                    'starts_at'    => now(),
+                    'sku'          => null,
+                ]);
+
+                $rewardValue  = $uniqueCode;
+                $message      = "Selamat! Voucher {$uniqueCode} berhasil diklaim. Gunakan saat checkout (berlaku 90 hari).";
+                $responseData = [
+                    'type'         => 'voucher_code',
+                    'voucher_code' => $uniqueCode,
+                    'description'  => $voucher->description,
+                    'value'        => $voucher->type === 'percent'
+                        ? "{$voucher->value}% OFF"
+                        : 'Rp ' . number_format((float) $voucher->value, 0, ',', '.'),
+                ];
+            } else {
+                throw new \Exception('Tipe reward tidak dikenali.');
+            }
+
+            LoyaltyClaim::create([
+                'user_id'      => $user->id,
+                'reward_id'    => $validated['reward_id'],
+                'tier_name'    => $foundTier,
+                'reward_type'  => $rewardType,
+                'reward_value' => $rewardValue,
+                'claimed_at'   => now(),
+            ]);
+        });
+
+        Log::info("User {$user->id} claimed loyalty reward '{$validated['reward_id']}' ({$rewardType}): {$rewardValue}");
+
+        return response()->json(['status' => 'success', 'message' => $message, 'data' => $responseData]);
     }
 
     private function calculateTier(float $totalSpent): array

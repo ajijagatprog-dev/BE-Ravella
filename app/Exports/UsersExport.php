@@ -7,11 +7,31 @@ use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 
+use Carbon\Carbon;
+
 class UsersExport implements FromCollection, WithHeadings, WithMapping
 {
+    protected $dateFrom;
+    protected $dateTo;
+
+    public function __construct($dateFrom = null, $dateTo = null)
+    {
+        $this->dateFrom = $dateFrom;
+        $this->dateTo = $dateTo;
+    }
+
     public function collection()
     {
-        return User::whereIn('role', ['customer', 'b2b'])->get();
+        $query = User::whereIn('role', ['customer', 'b2b']);
+
+        if ($this->dateFrom && $this->dateTo) {
+            $query->whereBetween('created_at', [
+                Carbon::parse($this->dateFrom)->startOfDay(),
+                Carbon::parse($this->dateTo)->endOfDay()
+            ]);
+        }
+
+        return $query->get();
     }
 
     public function headings(): array

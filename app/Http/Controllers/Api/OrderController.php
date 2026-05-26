@@ -400,69 +400,86 @@ class OrderController extends Controller
         ]);
     }
 
-    // GET: /api/admin/orders/stats
-    public function getOrderStats()
+    // GET: /api/admin/orders/stats?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+    public function getOrderStats(Request $request)
     {
         $now = Carbon::now();
-        $startOfMonth = $now->copy()->startOfMonth();
-        $startOfLastMonth = $now->copy()->subMonth()->startOfMonth();
-        $endOfLastMonth = $now->copy()->subMonth()->endOfMonth();
-        $today = $now->copy()->startOfDay();
-        $yesterday = $now->copy()->subDay()->startOfDay();
-        $endOfYesterday = $now->copy()->subDay()->endOfDay();
+        $dateFrom = $request->query('date_from'); // YYYY-MM-DD
+        $dateTo = $request->query('date_to');   // YYYY-MM-DD
 
-        // --- Total Pendapatan (Revenue from DELIVERED orders) ---
-        $totalRevenue = Order::where('status', 'DELIVERED')->sum('total_amount');
+        if ($dateFrom && $dateTo) {
+            $currentStart = Carbon::parse($dateFrom)->startOfDay();
+            $currentEnd = Carbon::parse($dateTo)->endOfDay();
 
-        $revenueThisMonth = Order::where('status', 'DELIVERED')
-            ->where('created_at', '>=', $startOfMonth)
+            // Rentang pembanding: durasi yang sama sebelum tanggal mulai
+            $rangeDays = $currentStart->diffInDays($currentEnd) + 1;
+            $previousEnd = $currentStart->copy()->subDay()->endOfDay();
+            $previousStart = $previousEnd->copy()->subDays($rangeDays - 1)->startOfDay();
+
+            $trendLabel = 'vs periode sebelumnya';
+        } else {
+            // Tidak ada filter → semua data, pembanding = bulan lalu
+            $currentStart = null;
+            $currentEnd = null;
+            $previousStart = $now->copy()->subMonth()->startOfMonth();
+            $previousEnd = $now->copy()->subMonth()->endOfMonth();
+            $trendLabel = 'vs bulan lalu';
+        }
+
+        // ── Total Pendapatan (hanya pesanan DELIVERED) ─────────────────────────
+        $revenueQuery = Order::query()->where('status', 'DELIVERED');
+        if ($currentStart) {
+            $revenueQuery->whereBetween('created_at', [$currentStart, $currentEnd]);
+        }
+        $totalRevenue = $revenueQuery->sum('total_amount');
+
+        $revenuePrev = Order::query()
+            ->where('status', 'DELIVERED')
+            ->whereBetween('created_at', [$previousStart, $previousEnd])
             ->sum('total_amount');
 
-        $revenueLastMonth = Order::where('status', 'DELIVERED')
-            ->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])
-            ->sum('total_amount');
+        $revenueTrend = $revenuePrev > 0
+            ? round((($totalRevenue - $revenuePrev) / $revenuePrev) * 100, 1)
+            : ($totalRevenue > 0 ? 100 : 0);
 
-        $revenueTrend = $revenueLastMonth > 0
-            ? round((($revenueThisMonth - $revenueLastMonth) / $revenueLastMonth) * 100, 1)
-            : ($revenueThisMonth > 0 ? 100 : 0);
+        // ── Pesanan Aktif (PROCESSING + SHIPPED = sedang berjalan) ───────────
+        $activeQuery = Order::query()->whereIn('status', ['PROCESSING', 'SHIPPED']);
+        if ($currentStart) {
+            $activeQuery->whereBetween('created_at', [$currentStart, $currentEnd]);
+        }
+        $activeOrders = $activeQuery->count();
 
-        // --- Pesanan Aktif (Active orders: PROCESSING, SHIPPED) ---
-        $activeOrders = Order::whereIn('status', ['PROCESSING', 'SHIPPED'])->count();
-
-        $activeToday = Order::whereIn('status', ['PROCESSING', 'SHIPPED'])
-            ->where('created_at', '>=', $today)
+        $activePrev = Order::query()
+            ->whereIn('status', ['PROCESSING', 'SHIPPED'])
+            ->whereBetween('created_at', [$previousStart, $previousEnd])
             ->count();
 
-        $activeYesterday = Order::whereIn('status', ['PROCESSING', 'SHIPPED'])
-            ->whereBetween('created_at', [$yesterday, $endOfYesterday])
+        $activeTrend = $activePrev > 0
+            ? round((($activeOrders - $activePrev) / $activePrev) * 100, 1)
+            : ($activeOrders > 0 ? 100 : 0);
+
+        // ── Pengiriman Tertunda (PENDING+PAID dalam periode = belum dikirim) ───
+        $pendingQuery = Order::query()->whereIn('status', ['PENDING', 'PAID']);
+        if ($currentStart) {
+            $pendingQuery->whereBetween('created_at', [$currentStart, $currentEnd]);
+        }
+        $pendingShipments = $pendingQuery->count();
+
+        $pendingPrev = Order::query()
+            ->whereIn('status', ['PENDING', 'PAID'])
+            ->whereBetween('created_at', [$previousStart, $previousEnd])
             ->count();
 
-        $activeTrend = $activeYesterday > 0
-            ? round((($activeToday - $activeYesterday) / $activeYesterday) * 100, 1)
-            : ($activeToday > 0 ? 100 : 0);
-
-        // --- Pengiriman Tertunda (Pending shipments = PENDING status) ---
-        $pendingShipments = Order::where('status', 'PENDING')->count();
-
-        $startOfWeek = $now->copy()->startOfWeek(Carbon::MONDAY);
-        $startOfLastWeek = $now->copy()->subWeek()->startOfWeek(Carbon::MONDAY);
-        $endOfLastWeek = $now->copy()->subWeek()->endOfWeek(Carbon::SUNDAY);
-
-        $pendingThisWeek = Order::where('status', 'PENDING')
-            ->where('created_at', '>=', $startOfWeek)
-            ->count();
-
-        $pendingLastWeek = Order::where('status', 'PENDING')
-            ->whereBetween('created_at', [$startOfLastWeek, $endOfLastWeek])
-            ->count();
-
-        $pendingTrend = $pendingLastWeek > 0
-            ? round((($pendingThisWeek - $pendingLastWeek) / $pendingLastWeek) * 100, 1)
-            : ($pendingThisWeek > 0 ? 100 : 0);
+        $pendingTrend = $pendingPrev > 0
+            ? round((($pendingShipments - $pendingPrev) / $pendingPrev) * 100, 1)
+            : ($pendingShipments > 0 ? 100 : 0);
 
         return response()->json([
             'status' => 'success',
             'data' => [
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'trend_label' => $trendLabel,
                 'total_revenue' => $totalRevenue,
                 'revenue_trend' => $revenueTrend,
                 'active_orders' => $activeOrders,
