@@ -20,13 +20,19 @@ class OrderItem extends Model
 
     public function review()
     {
-        return $this->hasMany(ProductReview::class, 'product_id', 'product_id')
-            ->where('order_id', $this->order_id);
+        return $this->hasOne(ProductReview::class, 'product_id', 'product_id')
+            ->where('product_reviews.order_id', $this->order_id);
     }
 
     public function getHasReviewAttribute()
     {
-        return $this->review()->exists();
+        if ($this->relationLoaded('review')) {
+            return !is_null($this->review);
+        }
+
+        return ProductReview::where('product_id', $this->product_id)
+            ->where('order_id', $this->order_id)
+            ->exists();
     }
 
     public function order()

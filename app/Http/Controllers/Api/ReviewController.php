@@ -82,6 +82,37 @@ class ReviewController extends Controller
     }
 
     /**
+     * Update an existing review (Customer)
+     */
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'rating' => 'required|integer|min:1|max:5',
+            'comment' => 'nullable|string|max:1000',
+            'images' => 'nullable|array',
+            'images.*' => 'string',
+        ]);
+
+        $review = ProductReview::where('id', $id)
+            ->where('user_id', auth()->id())
+            ->firstOrFail();
+
+        $review->update([
+            'rating' => $request->rating,
+            'comment' => $request->comment,
+            'images' => $request->images ?? $review->images,
+            'status' => 'pending', // Moderation required again
+            'admin_reply' => null, // Reset previous admin reply as content changed
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Ulasan berhasil diperbarui dan sedang menunggu moderasi ulang.',
+            'data' => $review
+        ]);
+    }
+
+    /**
      * Get approved reviews for a product (Public)
      */
     public function getProductReviews($productId)

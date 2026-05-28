@@ -167,6 +167,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/customer/orders/{order_number}', [OrderController::class, 'getOrderDetail']);
     Route::get('/customer/orders/{order_number}/tracking', [OrderController::class, 'trackOrder']);
     Route::post('/reviews', [ReviewController::class, 'store']);
+    Route::put('/reviews/{id}', [ReviewController::class, 'update']);
 
     // Customer Loyalty
     Route::get('/customer/loyalty', [LoyaltyController::class, 'getLoyaltyData']);

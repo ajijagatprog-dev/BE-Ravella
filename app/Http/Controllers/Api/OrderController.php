@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Order;
+use App\Models\ProductReview;
 use App\Models\Voucher;
 use App\Models\LoyaltySetting;
 use App\Models\LoyaltyTransaction;
@@ -32,7 +33,19 @@ class OrderController extends Controller
     // GET: /api/customer/orders/{order_number}
     public function getOrderDetail(Request $request, $order_number)
     {
-        $order = $request->user()->orders()->with('items.product')->where('order_number', $order_number)->firstOrFail();
+        $order = $request->user()->orders()
+            ->with(['items.product'])
+            ->where('order_number', $order_number)
+            ->firstOrFail();
+
+        $reviews = ProductReview::where('order_id', $order->id)
+            ->where('user_id', $request->user()->id)
+            ->get()
+            ->keyBy('product_id');
+
+        foreach ($order->items as $item) {
+            $item->setRelation('review', $reviews->get($item->product_id));
+        }
 
         return response()->json([
             'status' => 'success',
