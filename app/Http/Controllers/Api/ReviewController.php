@@ -97,17 +97,35 @@ class ReviewController extends Controller
             ->where('user_id', auth()->id())
             ->firstOrFail();
 
-        $review->update([
-            'rating' => $request->rating,
-            'comment' => $request->comment,
-            'images' => $request->images ?? $review->images,
-            'status' => 'pending', // Moderation required again
-            'admin_reply' => null, // Reset previous admin reply as content changed
-        ]);
+        if (!$review->is_editable) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Ulasan tidak dapat diubah karena sudah melewati batas waktu 5 hari sejak dibuat.'
+            ], 403);
+        }
+
+        if ($review->status === 'approved') {
+            // If already approved, save to edit columns so original approved review & admin reply remain visible
+            $review->update([
+                'edit_rating' => $request->rating,
+                'edit_comment' => $request->comment,
+                'edit_images' => $request->images ?? $review->images,
+                'edit_status' => 'pending',
+            ]);
+        } else {
+            // Otherwise, update the main fields directly
+            $review->update([
+                'rating' => $request->rating,
+                'comment' => $request->comment,
+                'images' => $request->images ?? $review->images,
+                'status' => 'pending',
+                'admin_reply' => null,
+            ]);
+        }
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Ulasan berhasil diperbarui dan sedang menunggu moderasi ulang.',
+            'message' => 'Ulasan berhasil diperbarui dan sedang menunggu moderasi ulang oleh admin.',
             'data' => $review
         ]);
     }
@@ -135,11 +153,18 @@ class ReviewController extends Controller
     public function index(Request $request)
     {
         $status = $request->query('status');
-        
+
         $query = ProductReview::with(['user:id,name', 'product:id,name,image']);
 
         if ($status) {
-            $query->where('status', $status);
+            if ($status === 'pending') {
+                $query->where(function ($q) {
+                    $q->where('status', 'pending')
+                        ->orWhere('edit_status', 'pending');
+                });
+            } else {
+                $query->where('status', $status);
+            }
         }
 
         $reviews = $query->latest()->paginate(20);
@@ -161,10 +186,40 @@ class ReviewController extends Controller
         ]);
 
         $review = ProductReview::findOrFail($id);
-        $review->update([
-            'status' => $request->status,
-            'admin_reply' => $request->admin_reply
-        ]);
+
+        if ($review->edit_status === 'pending') {
+            if ($request->status === 'approved') {
+                // Apply edited content to the main fields
+                $review->update([
+                    'rating' => $review->edit_rating ?? $review->rating,
+                    'comment' => $review->edit_comment ?? $review->comment,
+                    'images' => $review->edit_images ?? $review->images,
+                    'status' => 'approved',
+                    'admin_reply' => $request->has('admin_reply') ? $request->admin_reply : $review->admin_reply,
+
+                    // Reset edit columns
+                    'edit_rating' => null,
+                    'edit_comment' => null,
+                    'edit_images' => null,
+                    'edit_status' => 'none',
+                ]);
+            } else {
+                // If rejected, keep the original approved review active on web, just discard the pending edit
+                $review->update([
+                    'status' => 'approved',
+                    'edit_rating' => null,
+                    'edit_comment' => null,
+                    'edit_images' => null,
+                    'edit_status' => 'none',
+                ]);
+            }
+        } else {
+            // Standard moderation for new reviews
+            $review->update([
+                'status' => $request->status,
+                'admin_reply' => $request->has('admin_reply') ? $request->admin_reply : $review->admin_reply
+            ]);
+        }
 
         return response()->json([
             'status' => 'success',

@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\ProductReview;
 use App\Models\Voucher;
+use App\Models\Product;
 use App\Models\LoyaltySetting;
 use App\Models\LoyaltyTransaction;
 use Carbon\Carbon;
@@ -87,10 +88,39 @@ class OrderController extends Controller
         $appliedVoucherCode = null;
         if (!empty($validated['voucher_code'])) {
             $voucher = Voucher::where('code', strtoupper(trim($validated['voucher_code'])))->first();
-            if ($voucher && $voucher->isValid() && $subtotal >= (float) $voucher->min_purchase) {
-                $discountAmount = $voucher->calculateDiscount($subtotal);
-                $appliedVoucherCode = $voucher->code;
-                $voucher->increment('used_count');
+            if ($voucher && $voucher->isValid()) {
+                $isProductVoucher = !empty($voucher->sku) && !in_array(strtoupper(trim($voucher->sku)), ['ALL', 'all', 'All']);
+
+                if ($isProductVoucher) {
+                    $matchingProducts = Product::where('sku', $voucher->sku)->get();
+                    if ($matchingProducts->isNotEmpty()) {
+                        $matchingProductIds = $matchingProducts->pluck('id')->toArray();
+                        $matchingSubtotal = 0;
+                        $hasMatchingProduct = false;
+
+                        foreach ($validated['items'] as $item) {
+                            if (in_array($item['product_id'], $matchingProductIds)) {
+                                $hasMatchingProduct = true;
+                                $dbProduct = $matchingProducts->firstWhere('id', $item['product_id']);
+                                $price = $dbProduct ? (float) ($dbProduct->promoted_price ?? $dbProduct->price) : (float) $item['price'];
+                                $matchingSubtotal += $price * (int) $item['quantity'];
+                            }
+                        }
+
+                        if ($hasMatchingProduct && $matchingSubtotal >= (float) $voucher->min_purchase) {
+                            $discountAmount = $voucher->calculateDiscount($matchingSubtotal);
+                            $appliedVoucherCode = $voucher->code;
+                            $voucher->increment('used_count');
+                        }
+                    }
+                } else {
+                    // Voucher Toko
+                    if ($subtotal >= (float) $voucher->min_purchase) {
+                        $discountAmount = $voucher->calculateDiscount($subtotal);
+                        $appliedVoucherCode = $voucher->code;
+                        $voucher->increment('used_count');
+                    }
+                }
             }
         }
 

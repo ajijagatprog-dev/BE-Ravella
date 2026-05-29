@@ -263,14 +263,22 @@ class ReportController extends Controller
     public function trafficReport(Request $request)
     {
         $period = $request->input('period', 'last_30');
+        $dateFrom = $request->input('date_from');
+        $dateTo = $request->input('date_to');
 
-        $startDate = match ($period) {
-            'last_7' => '7daysAgo',
-            'last_30' => '30daysAgo',
-            'last_90' => '90daysAgo',
-            'all' => '2020-01-01',
-            default => '30daysAgo',
-        };
+        if ($dateFrom || $dateTo) {
+            $startDate = $dateFrom ?: '2020-01-01';
+            $endDate = $dateTo ?: 'today';
+        } else {
+            $startDate = match ($period) {
+                'last_7' => '7daysAgo',
+                'last_30' => '30daysAgo',
+                'last_90' => '90daysAgo',
+                'all' => '2020-01-01',
+                default => '30daysAgo',
+            };
+            $endDate = 'today';
+        }
 
         $propertyId = env('GA4_PROPERTY_ID');
 
@@ -296,7 +304,7 @@ class ReportController extends Controller
             // Query basic metrics
             $runReportReq = new \Google\Analytics\Data\V1beta\RunReportRequest([
                 'property' => 'properties/' . $propertyId,
-                'date_ranges' => [new DateRange(['start_date' => $startDate, 'end_date' => 'today'])],
+                'date_ranges' => [new DateRange(['start_date' => $startDate, 'end_date' => $endDate])],
                 'dimensions' => [new Dimension(['name' => 'pagePath'])], // We use pagePath for URL visits
                 'metrics' => [
                     new Metric(['name' => 'screenPageViews']),

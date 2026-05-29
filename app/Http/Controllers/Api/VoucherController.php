@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Voucher;
+use App\Models\Product;
 use App\Imports\VouchersImport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -23,14 +24,14 @@ class VoucherController extends Controller
         $vouchers = Voucher::where('is_active', true)
             ->where(function ($query) {
                 $query->whereNull('expires_at')
-                      ->orWhere('expires_at', '>=', now());
+                    ->orWhere('expires_at', '>=', now());
             })
             ->latest()
             ->get();
 
         return response()->json([
             'status' => 'success',
-            'data'   => $vouchers
+            'data' => $vouchers
         ]);
     }
 
@@ -41,15 +42,16 @@ class VoucherController extends Controller
     public function check(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'code'     => 'required|string',
+            'code' => 'required|string',
             'subtotal' => 'required|numeric|min:0',
+            'items' => 'nullable|string', // JSON string: [{"id":1,"quantity":2,"price":100000}]
         ]);
 
         if ($validator->fails()) {
             return response()->json([
-                'status'  => 'error',
+                'status' => 'error',
                 'message' => 'Kode voucher dan total belanja diperlukan.',
-                'errors'  => $validator->errors(),
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -57,39 +59,101 @@ class VoucherController extends Controller
 
         if (!$voucher) {
             return response()->json([
-                'status'  => 'error',
+                'status' => 'error',
                 'message' => 'Kode voucher tidak ditemukan.',
             ], 404);
         }
 
         if (!$voucher->isValid()) {
             return response()->json([
-                'status'  => 'error',
+                'status' => 'error',
                 'message' => 'Voucher sudah tidak berlaku atau habis masa pakainya.',
             ], 422);
         }
 
         $subtotal = (float) $request->subtotal;
+        $discountAmount = 0;
 
-        if ($subtotal < (float) $voucher->min_purchase) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Minimum pembelian untuk voucher ini adalah Rp ' . number_format($voucher->min_purchase, 0, ',', '.'),
-            ], 422);
+        // Cek apakah ini Voucher Produk (memiliki SKU spesifik)
+        $isProductVoucher = !empty($voucher->sku) && !in_array(strtoupper(trim($voucher->sku)), ['ALL', 'all', 'All']);
+
+        if ($isProductVoucher) {
+            if (empty($request->items)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Voucher ini hanya berlaku untuk produk tertentu.',
+                ], 422);
+            }
+
+            $cartItems = json_decode($request->items, true);
+            if (!is_array($cartItems)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Format data keranjang tidak valid.',
+                ], 422);
+            }
+
+            // Cari produk yang sesuai dengan SKU voucher
+            $matchingProducts = Product::where('sku', $voucher->sku)->get();
+            if ($matchingProducts->isEmpty()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Voucher tidak dapat digunakan karena produk tidak aktif.',
+                ], 422);
+            }
+
+            $matchingProductIds = $matchingProducts->pluck('id')->toArray();
+
+            // Hitung subtotal hanya untuk produk yang cocok
+            $matchingSubtotal = 0;
+            $hasMatchingProduct = false;
+
+            foreach ($cartItems as $item) {
+                if (in_array($item['id'], $matchingProductIds)) {
+                    $hasMatchingProduct = true;
+                    $dbProduct = $matchingProducts->firstWhere('id', $item['id']);
+                    $price = $dbProduct ? (float) ($dbProduct->promoted_price ?? $dbProduct->price) : (float) $item['price'];
+                    $matchingSubtotal += $price * (int) $item['quantity'];
+                }
+            }
+
+            if (!$hasMatchingProduct) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Voucher ini hanya berlaku untuk produk dengan SKU: ' . $voucher->sku,
+                ], 422);
+            }
+
+            if ($matchingSubtotal < (float) $voucher->min_purchase) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Minimal pembelian untuk produk voucher ini adalah Rp ' . number_format($voucher->min_purchase, 0, ',', '.'),
+                ], 422);
+            }
+
+            $discountAmount = $voucher->calculateDiscount($matchingSubtotal);
+        } else {
+            // Voucher Toko
+            if ($subtotal < (float) $voucher->min_purchase) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Minimum pembelian untuk voucher ini adalah Rp ' . number_format($voucher->min_purchase, 0, ',', '.'),
+                ], 422);
+            }
+
+            $discountAmount = $voucher->calculateDiscount($subtotal);
         }
 
-        $discountAmount = $voucher->calculateDiscount($subtotal);
-
         return response()->json([
-            'status'  => 'success',
+            'status' => 'success',
             'message' => 'Voucher berhasil digunakan!',
-            'data'    => [
-                'code'            => $voucher->code,
-                'description'     => $voucher->description,
-                'type'            => $voucher->type,
-                'value'           => $voucher->value,
+            'data' => [
+                'code' => $voucher->code,
+                'description' => $voucher->description,
+                'type' => $voucher->type,
+                'value' => $voucher->value,
                 'discount_amount' => $discountAmount,
-                'final_total'     => max(0, $subtotal - $discountAmount),
+                'final_total' => max(0, $subtotal - $discountAmount),
             ],
         ]);
     }
@@ -97,9 +161,24 @@ class VoucherController extends Controller
     // ── ADMIN ─────────────────────────────────────────
 
     /** GET /api/admin/vouchers */
-    public function index()
+    public function index(Request $request)
     {
-        $vouchers = Voucher::latest()->get();
+        $query = Voucher::latest();
+
+        $type = $request->query('type');
+        if ($type === 'product' || $type === 'produk') {
+            $query->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->whereNotIn('sku', ['ALL', 'all', 'All']);
+        } elseif ($type === 'toko' || $type === 'store') {
+            $query->where(function ($q) {
+                $q->whereNull('sku')
+                    ->orWhere('sku', '')
+                    ->orWhereIn('sku', ['ALL', 'all', 'All']);
+            });
+        }
+
+        $vouchers = $query->get();
         return response()->json(['status' => 'success', 'data' => $vouchers]);
     }
 
@@ -107,25 +186,25 @@ class VoucherController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'code'         => 'required|string|max:50|unique:vouchers,code',
-            'description'  => 'nullable|string|max:255',
-            'type'         => 'required|in:percent,fixed',
-            'value'        => 'required|numeric|min:0',
+            'code' => 'required|string|max:50|unique:vouchers,code',
+            'description' => 'nullable|string|max:255',
+            'type' => 'required|in:percent,fixed',
+            'value' => 'required|numeric|min:0',
             'min_purchase' => 'nullable|numeric|min:0',
             'max_discount' => 'nullable|numeric|min:0',
-            'max_uses'     => 'nullable|integer|min:1',
-            'is_active'    => 'boolean',
-            'starts_at'    => 'nullable|date',
-            'expires_at'   => 'nullable|date|after_or_equal:starts_at',
-            'sku'          => 'nullable|string|max:100',
+            'max_uses' => 'nullable|integer|min:1',
+            'is_active' => 'boolean',
+            'starts_at' => 'nullable|date',
+            'expires_at' => 'nullable|date|after_or_equal:starts_at',
+            'sku' => 'nullable|string|max:100',
             'max_per_user' => 'nullable|integer|min:1',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
-                'status'  => 'error',
+                'status' => 'error',
                 'message' => 'Validation error',
-                'errors'  => $validator->errors(),
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -135,9 +214,9 @@ class VoucherController extends Controller
         $voucher = Voucher::create($data);
 
         return response()->json([
-            'status'  => 'success',
+            'status' => 'success',
             'message' => 'Voucher created successfully',
-            'data'    => $voucher,
+            'data' => $voucher,
         ], 201);
     }
 
@@ -147,25 +226,25 @@ class VoucherController extends Controller
         $voucher = Voucher::findOrFail($id);
 
         $validator = Validator::make($request->all(), [
-            'code'         => 'sometimes|string|max:50|unique:vouchers,code,' . $id,
-            'description'  => 'nullable|string|max:255',
-            'type'         => 'sometimes|in:percent,fixed',
-            'value'        => 'sometimes|numeric|min:0',
+            'code' => 'sometimes|string|max:50|unique:vouchers,code,' . $id,
+            'description' => 'nullable|string|max:255',
+            'type' => 'sometimes|in:percent,fixed',
+            'value' => 'sometimes|numeric|min:0',
             'min_purchase' => 'nullable|numeric|min:0',
             'max_discount' => 'nullable|numeric|min:0',
-            'max_uses'     => 'nullable|integer|min:1',
-            'is_active'    => 'boolean',
-            'starts_at'    => 'nullable|date',
-            'expires_at'   => 'nullable|date',
-            'sku'          => 'nullable|string|max:100',
+            'max_uses' => 'nullable|integer|min:1',
+            'is_active' => 'boolean',
+            'starts_at' => 'nullable|date',
+            'expires_at' => 'nullable|date',
+            'sku' => 'nullable|string|max:100',
             'max_per_user' => 'nullable|integer|min:1',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
-                'status'  => 'error',
+                'status' => 'error',
                 'message' => 'Validation error',
-                'errors'  => $validator->errors(),
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -177,9 +256,9 @@ class VoucherController extends Controller
         $voucher->update($data);
 
         return response()->json([
-            'status'  => 'success',
+            'status' => 'success',
             'message' => 'Voucher updated successfully',
-            'data'    => $voucher,
+            'data' => $voucher,
         ]);
     }
 
@@ -190,7 +269,7 @@ class VoucherController extends Controller
         $voucher->delete();
 
         return response()->json([
-            'status'  => 'success',
+            'status' => 'success',
             'message' => 'Voucher deleted successfully',
         ]);
     }
@@ -208,9 +287,9 @@ class VoucherController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'status'  => 'error',
+                'status' => 'error',
                 'message' => 'File tidak valid. Harap upload file Excel (.xlsx, .xls) atau CSV.',
-                'errors'  => $validator->errors(),
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -224,7 +303,7 @@ class VoucherController extends Controller
         }
 
         return response()->json([
-            'status'  => 'success',
+            'status' => 'success',
             'message' => 'Import selesai.',
             'imported' => true,
             'failures' => $failureMessages,
@@ -238,12 +317,13 @@ class VoucherController extends Controller
     public function downloadTemplate(): StreamedResponse
     {
         $headers = [
-            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="template_voucher.xlsx"',
         ];
 
         return Excel::download(new class implements \Maatwebsite\Excel\Concerns\FromArray, \Maatwebsite\Excel\Concerns\WithHeadings, \Maatwebsite\Excel\Concerns\WithStyles {
-            public function headings(): array {
+            public function headings(): array
+            {
                 return [
                     'Kode Produk / SKU',
                     'Kode Voucher',
@@ -255,13 +335,15 @@ class VoucherController extends Controller
                     'Periode Off / Kadaluarsa',
                 ];
             }
-            public function array(): array {
+            public function array(): array
+            {
                 return [
                     ['SKU-123', 'PROMO77', 50000, 100000, 50, 1, '2026-04-01', '2026-04-30'],
                     ['ALL', 'HEMAT10K', 10000, 50000, 100, 2, '2026-04-01', '2026-12-31'],
                 ];
             }
-            public function styles(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet): array {
+            public function styles(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet): array
+            {
                 return [
                     1 => ['font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']], 'fill' => ['fillType' => 'solid', 'color' => ['rgb' => '1F2937']]],
                 ];

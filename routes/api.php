@@ -86,6 +86,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/users', [UserController::class, 'index']);
     Route::get('/admin/users/{id}', [UserController::class, 'getUserDetail']);
     Route::put('/admin/users/{id}', [UserController::class, 'updateUser']);
+    Route::delete('/admin/users/{id}', [UserController::class, 'destroy']);
     Route::get('/users', [UserController::class, 'index']);
 
     // News management (Admin)

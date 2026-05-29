@@ -279,4 +279,32 @@ class UserController extends Controller
             ]
         ]);
     }
+
+    // DELETE: /api/admin/users/{id}
+    public function destroy($id)
+    {
+        $user = User::findOrFail($id);
+
+        if (auth()->id() == $user->id) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Anda tidak dapat menghapus akun Anda sendiri.',
+            ], 422);
+        }
+
+        \DB::transaction(function () use ($user) {
+            // Hapus data relasional terlebih dahulu untuk menghindari constraint foreign key
+            \App\Models\Order::where('user_id', $user->id)->delete();
+            \App\Models\LoyaltyTransaction::where('user_id', $user->id)->delete();
+            \DB::table('addresses')->where('user_id', $user->id)->delete();
+            \DB::table('product_reviews')->where('user_id', $user->id)->delete();
+            
+            $user->delete();
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User berhasil dihapus beserta data terkait.',
+        ]);
+    }
 }

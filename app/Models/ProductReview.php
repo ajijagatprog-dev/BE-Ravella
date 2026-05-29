@@ -18,12 +18,28 @@ class ProductReview extends Model
         'images',
         'status',
         'admin_reply',
+        'edit_rating',
+        'edit_comment',
+        'edit_images',
+        'edit_status',
     ];
 
     protected $casts = [
         'images' => 'array',
         'rating' => 'integer',
+        'edit_images' => 'array',
+        'edit_rating' => 'integer',
     ];
+
+    protected $appends = [
+        'is_editable',
+    ];
+
+    public function getIsEditableAttribute()
+    {
+        // Review can only be edited within 5 days of its creation
+        return $this->created_at ? $this->created_at->addDays(5)->isFuture() : false;
+    }
 
     public function product()
     {
