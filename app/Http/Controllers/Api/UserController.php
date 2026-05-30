@@ -97,12 +97,11 @@ class UserController extends Controller
     }
 
     // GET: /api/admin/users/stats
-    // GET: /api/admin/users/stats
     public function getUserStats(Request $request)
     {
         $now = Carbon::now();
-        $dateFrom = $request->query('date_from'); // YYYY-MM-DD
-        $dateTo = $request->query('date_to');   // YYYY-MM-DD
+        $dateFrom = $request->query('date_from');
+        $dateTo = $request->query('date_to');
 
         if ($dateFrom && $dateTo) {
             $currentStart = Carbon::parse($dateFrom)->startOfDay();
@@ -298,7 +297,7 @@ class UserController extends Controller
             \App\Models\LoyaltyTransaction::where('user_id', $user->id)->delete();
             \DB::table('addresses')->where('user_id', $user->id)->delete();
             \DB::table('product_reviews')->where('user_id', $user->id)->delete();
-            
+
             $user->delete();
         });
 
