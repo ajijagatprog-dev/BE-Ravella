@@ -27,7 +27,7 @@ class PaymentController extends Controller
         // For development, we'll accept all callbacks.
         $callbackToken = $request->header('x-callback-token');
         $expectedToken = env('XENDIT_CALLBACK_TOKEN');
-        
+
         if ($expectedToken && $callbackToken !== $expectedToken) {
             Log::warning('Xendit Webhook: Invalid callback token');
             return response()->json(['status' => 'error', 'message' => 'Invalid callback token'], 403);
@@ -41,7 +41,7 @@ class PaymentController extends Controller
         $xenditInvoiceId = $request->input('id');
 
         // Test payload from dashboard does not include external_id or status
-        if (! $externalId || ! $status) {
+        if (!$externalId || !$status) {
             Log::info('Xendit Webhook: Test ping received from dashboard');
             return response()->json(['status' => 'success', 'message' => 'Webhook endpoint active'], 200);
         }
@@ -70,6 +70,17 @@ class PaymentController extends Controller
                         'payment_token' => $xenditInvoiceId,
                         'paid_at' => $paidAt ? date('Y-m-d H:i:s', strtotime($paidAt)) : now(),
                     ]);
+
+                    // Deduct product stock
+                    foreach ($order->items()->with('product')->get() as $item) {
+                        $product = $item->product;
+                        if ($product) {
+                            $product->decrement('stock', $item->quantity);
+                            if ($product->fresh()->stock < 0) {
+                                Log::warning("Overselling detected for product SKU {$product->sku} on order {$order->order_number}. Current stock: {$product->stock}");
+                            }
+                        }
+                    }
 
                     // Award loyalty points
                     $pointsEarned = floor($order->total_amount / 10000);
@@ -151,19 +162,34 @@ class PaymentController extends Controller
         }
 
         if ($validated['status'] === 'success') {
-            $order->status = 'PAID';
-            $order->payment_token = 'sim_token_' . uniqid();
+            if ($order->status === 'PENDING') {
+                $order->status = 'PAID';
+                $order->payment_token = 'sim_token_' . uniqid();
 
-            // Reward loyalty points
-            $pointsEarned = floor($order->total_amount / 10000);
-            $user = $order->user;
-            if ($user && isset($user->loyalty_points)) {
-                $user->loyalty_points += $pointsEarned;
-                $user->save();
+                // Deduct product stock
+                foreach ($order->items()->with('product')->get() as $item) {
+                    $product = $item->product;
+                    if ($product) {
+                        $product->decrement('stock', $item->quantity);
+                        if ($product->fresh()->stock < 0) {
+                            Log::warning("Overselling detected during simulated webhook for product SKU {$product->sku} on order {$order->order_number}. Current stock: {$product->stock}");
+                        }
+                    }
+                }
+
+                // Reward loyalty points
+                $pointsEarned = floor($order->total_amount / 10000);
+                $user = $order->user;
+                if ($user && isset($user->loyalty_points)) {
+                    $user->loyalty_points += $pointsEarned;
+                    $user->save();
+                }
             }
 
         } else if ($validated['status'] === 'failed') {
-            $order->status = 'CANCELLED';
+            if ($order->status === 'PENDING') {
+                $order->status = 'CANCELLED';
+            }
         }
 
         $order->save();

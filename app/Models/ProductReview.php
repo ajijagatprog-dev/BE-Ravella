@@ -9,6 +9,32 @@ class ProductReview extends Model
 {
     use HasFactory;
 
+    protected static function booted()
+    {
+        static::saved(function ($review) {
+            self::updateProductRatingAndReviews($review->product_id);
+        });
+
+        static::deleted(function ($review) {
+            self::updateProductRatingAndReviews($review->product_id);
+        });
+    }
+
+    public static function updateProductRatingAndReviews($productId)
+    {
+        $product = Product::find($productId);
+        if ($product) {
+            $reviewsQuery = self::where('product_id', $productId)->where('status', 'approved');
+            $count = $reviewsQuery->count();
+            $avgRating = $count > 0 ? round($reviewsQuery->avg('rating'), 1) : 0;
+
+            $product->update([
+                'reviews' => $count,
+                'rating' => $avgRating
+            ]);
+        }
+    }
+
     protected $fillable = [
         'product_id',
         'user_id',

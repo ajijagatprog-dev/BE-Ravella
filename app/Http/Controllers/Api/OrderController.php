@@ -388,6 +388,31 @@ class OrderController extends Controller
             'tracking_number' => $validated['tracking_number'] ?? $order->tracking_number,
         ]);
 
+        // Manage product stock based on status transition
+        $paidStatuses = ['PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
+        $unpaidStatuses = ['PENDING', 'CANCELLED'];
+
+        if (in_array($previousStatus, $unpaidStatuses) && in_array($newStatus, $paidStatuses)) {
+            // Unpaid -> Paid: Deduct stock
+            foreach ($order->items()->with('product')->get() as $item) {
+                $product = $item->product;
+                if ($product) {
+                    $product->decrement('stock', $item->quantity);
+                    if ($product->fresh()->stock < 0) {
+                        Log::warning("Overselling detected during manual status update to {$newStatus} for product SKU {$product->sku} on order {$order->order_number}. Current stock: {$product->stock}");
+                    }
+                }
+            }
+        } elseif (in_array($previousStatus, $paidStatuses) && in_array($newStatus, $unpaidStatuses)) {
+            // Paid -> Unpaid: Restore stock
+            foreach ($order->items()->with('product')->get() as $item) {
+                $product = $item->product;
+                if ($product) {
+                    $product->increment('stock', $item->quantity);
+                }
+            }
+        }
+
         // Award loyalty points when order is delivered (uses dynamic multiplier)
         if ($validated['status'] === 'DELIVERED' && $previousStatus !== 'DELIVERED') {
             $multiplier = (int) \App\Models\LoyaltySetting::getValue('earning_multiplier', '10');
