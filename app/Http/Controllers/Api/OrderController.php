@@ -420,7 +420,7 @@ class OrderController extends Controller
 
             if ($user) {
                 $baseMultiplier = (int) \App\Models\LoyaltySetting::getValue('earning_multiplier', '10');
-                
+
                 // Get tier multiplier
                 $tierMultiplier = 1.0;
                 $loyaltyEnabled = \App\Models\LoyaltySetting::getValue('loyalty_enabled', '1') === '1';
