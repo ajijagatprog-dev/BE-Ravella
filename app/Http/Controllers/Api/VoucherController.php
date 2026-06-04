@@ -22,6 +22,7 @@ class VoucherController extends Controller
     public function active()
     {
         $vouchers = Voucher::where('is_active', true)
+            ->where('is_loyalty', false)
             ->where(function ($query) {
                 $query->whereNull('expires_at')
                     ->orWhere('expires_at', '>=', now());
@@ -68,6 +69,13 @@ class VoucherController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Voucher sudah tidak berlaku atau habis masa pakainya.',
+            ], 422);
+        }
+
+        if ($voucher->is_loyalty) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Voucher ini hanya dapat digunakan setelah ditukarkan dengan poin loyalty.',
             ], 422);
         }
 
@@ -160,10 +168,12 @@ class VoucherController extends Controller
 
     // ── ADMIN ─────────────────────────────────────────
 
-    /** GET /api/admin/vouchers */
     public function index(Request $request)
     {
         $query = Voucher::latest();
+
+        $isLoyalty = $request->boolean('is_loyalty', false);
+        $query->where('is_loyalty', $isLoyalty);
 
         $type = $request->query('type');
         if ($type === 'product' || $type === 'produk') {
@@ -182,7 +192,6 @@ class VoucherController extends Controller
         return response()->json(['status' => 'success', 'data' => $vouchers]);
     }
 
-    /** POST /api/admin/vouchers */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -198,6 +207,7 @@ class VoucherController extends Controller
             'expires_at' => 'nullable|date|after_or_equal:starts_at',
             'sku' => 'nullable|string|max:100',
             'max_per_user' => 'nullable|integer|min:1',
+            'is_loyalty' => 'boolean',
         ]);
 
         if ($validator->fails()) {
@@ -238,6 +248,7 @@ class VoucherController extends Controller
             'expires_at' => 'nullable|date',
             'sku' => 'nullable|string|max:100',
             'max_per_user' => 'nullable|integer|min:1',
+            'is_loyalty' => 'boolean',
         ]);
 
         if ($validator->fails()) {

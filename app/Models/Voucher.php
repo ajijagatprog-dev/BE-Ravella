@@ -22,6 +22,7 @@ class Voucher extends Model
         'starts_at',
         'sku',
         'max_per_user',
+        'is_loyalty',
     ];
 
     protected $casts = [
@@ -32,6 +33,7 @@ class Voucher extends Model
         'min_purchase' => 'decimal:2',
         'max_discount' => 'decimal:2',
         'max_per_user' => 'integer',
+        'is_loyalty' => 'boolean',
     ];
 
     /**

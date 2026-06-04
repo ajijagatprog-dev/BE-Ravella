@@ -237,6 +237,7 @@ class LoyaltyController extends Controller
         // ── 2. Active Vouchers (redeemable with points) ───────────────────────
         // Ambil voucher yang aktif dan belum expired
         $activeVouchers = Voucher::where('is_active', true)
+            ->where('is_loyalty', true)
             ->where(function ($q) {
                 $q->whereNull('expires_at')->orWhere('expires_at', '>=', now());
             })
@@ -336,29 +337,47 @@ class LoyaltyController extends Controller
             }
         }
 
-        DB::transaction(function () use ($user, $validated, $voucher) {
+        $uniqueCode = strtoupper($voucher->code . '_' . Str::random(5));
+
+        DB::transaction(function () use ($user, $validated, $voucher, $uniqueCode) {
             // Deduct points
             $user->decrement('loyalty_points', $validated['points_to_spend']);
 
-            // Record transaction
+            // Create unique user voucher copy
+            Voucher::create([
+                'code' => $uniqueCode,
+                'description' => ($voucher->description ?? '') . ' (Loyalty Redeem)',
+                'type' => $voucher->type,
+                'value' => $voucher->value,
+                'min_purchase' => $voucher->min_purchase,
+                'max_discount' => $voucher->max_discount,
+                'max_uses' => 1,
+                'max_per_user' => 1,
+                'is_active' => true,
+                'expires_at' => now()->addDays(30), // relative expiration date: 30 days
+                'starts_at' => now(),
+                'sku' => $voucher->sku,
+            ]);
+
+            // Record transaction pointing to original voucher for limits check
             LoyaltyTransaction::create([
                 'user_id' => $user->id,
                 'type' => 'redeem',
                 'points' => $validated['points_to_spend'],
-                'description' => 'Penukaran poin untuk voucher ' . $voucher->code,
+                'description' => 'Penukaran poin untuk voucher ' . $uniqueCode,
                 'reference_type' => 'voucher',
                 'reference_id' => $voucher->id,
             ]);
         });
 
-        Log::info("User {$user->id} redeemed {$validated['points_to_spend']} points for voucher {$voucher->code}");
+        Log::info("User {$user->id} redeemed {$validated['points_to_spend']} points for voucher {$uniqueCode}");
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Berhasil! Voucher ' . $voucher->code . ' telah ditambahkan ke akun Anda.',
+            'message' => 'Berhasil! Voucher ' . $uniqueCode . ' telah ditambahkan ke akun Anda.',
             'data' => [
-                'voucher_code' => $voucher->code,
-                'voucher_description' => $voucher->description,
+                'voucher_code' => $uniqueCode,
+                'voucher_description' => $voucher->description ?? 'Voucher Loyalty',
                 'points_spent' => $validated['points_to_spend'],
                 'remaining_points' => ($user->loyalty_points ?? 0),
             ]
@@ -387,7 +406,8 @@ class LoyaltyController extends Controller
         foreach ($tiers as $tier) {
             if ($totalSpent >= ($tier['min'] ?? 0)) {
                 foreach ($tier['claimable_rewards'] ?? [] as $reward) {
-                    if (!isset($reward['id'])) continue;
+                    if (!isset($reward['id']))
+                        continue;
                     $reward['tier_name'] = $tier['name'];
                     $unlockedRewards[] = $reward;
                 }
@@ -402,10 +422,10 @@ class LoyaltyController extends Controller
         $claimedIds = LoyaltyClaim::where('user_id', $user->id)->pluck('reward_id')->toArray();
 
         $claimable = [];
-        $claimed   = [];
+        $claimed = [];
 
         foreach ($unlockedRewards as $reward) {
-            $rewardId  = $reward['id'];
+            $rewardId = $reward['id'];
             $isClaimed = in_array($rewardId, $claimedIds);
 
             $voucherLabel = null;
@@ -419,21 +439,21 @@ class LoyaltyController extends Controller
             }
 
             $entry = [
-                'id'            => $rewardId,
-                'label'         => $reward['label'] ?? 'Tier Reward',
-                'type'          => $reward['type'] ?? 'bonus_points',
-                'tier_name'     => $reward['tier_name'],
-                'points'        => $reward['points'] ?? null,
-                'voucher_id'    => $reward['voucher_id'] ?? null,
+                'id' => $rewardId,
+                'label' => $reward['label'] ?? 'Tier Reward',
+                'type' => $reward['type'] ?? 'bonus_points',
+                'tier_name' => $reward['tier_name'],
+                'points' => $reward['points'] ?? null,
+                'voucher_id' => $reward['voucher_id'] ?? null,
                 'voucher_label' => $voucherLabel,
-                'one_time'      => $reward['one_time'] ?? true,
-                'is_claimed'    => $isClaimed,
+                'one_time' => $reward['one_time'] ?? true,
+                'is_claimed' => $isClaimed,
             ];
 
             if ($isClaimed) {
                 $claim = LoyaltyClaim::where('user_id', $user->id)->where('reward_id', $rewardId)->first();
                 $entry['claimed_value'] = $claim?->reward_value;
-                $entry['claimed_at']    = $claim?->claimed_at?->format('d M Y');
+                $entry['claimed_at'] = $claim?->claimed_at?->format('d M Y');
                 $claimed[] = $entry;
             } else {
                 $claimable[] = $entry;
@@ -442,7 +462,7 @@ class LoyaltyController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data'   => ['claimable' => $claimable, 'claimed' => $claimed],
+            'data' => ['claimable' => $claimable, 'claimed' => $claimed],
         ]);
     }
 
@@ -470,13 +490,13 @@ class LoyaltyController extends Controller
         usort($tiers, fn($a, $b) => ($b['min'] ?? 0) - ($a['min'] ?? 0));
 
         $foundReward = null;
-        $foundTier   = null;
+        $foundTier = null;
         foreach ($tiers as $tier) {
             if ($totalSpent >= ($tier['min'] ?? 0)) {
                 foreach ($tier['claimable_rewards'] ?? [] as $reward) {
                     if (($reward['id'] ?? '') === $validated['reward_id']) {
                         $foundReward = $reward;
-                        $foundTier   = $tier['name'];
+                        $foundTier = $tier['name'];
                         break 2;
                     }
                 }
@@ -488,32 +508,34 @@ class LoyaltyController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Reward tidak ditemukan atau Anda belum memenuhi syarat.'], 422);
         }
 
-        $rewardType   = $foundReward['type'] ?? 'bonus_points';
-        $rewardValue  = null;
-        $message      = '';
+        $rewardType = $foundReward['type'] ?? 'bonus_points';
+        $rewardValue = null;
+        $message = '';
         $responseData = [];
 
         DB::transaction(function () use ($user, $foundReward, $foundTier, $rewardType, $validated, &$rewardValue, &$message, &$responseData) {
             if ($rewardType === 'bonus_points') {
                 $pts = (int) ($foundReward['points'] ?? 0);
-                if ($pts <= 0) throw new \Exception('Jumlah poin reward tidak valid.');
+                if ($pts <= 0)
+                    throw new \Exception('Jumlah poin reward tidak valid.');
 
                 $user->increment('loyalty_points', $pts);
                 LoyaltyTransaction::create([
-                    'user_id'        => $user->id,
-                    'type'           => 'earn',
-                    'points'         => $pts,
-                    'description'    => 'Tier Reward: ' . ($foundReward['label'] ?? $foundTier),
+                    'user_id' => $user->id,
+                    'type' => 'earn',
+                    'points' => $pts,
+                    'description' => 'Tier Reward: ' . ($foundReward['label'] ?? $foundTier),
                     'reference_type' => 'loyalty_claim',
-                    'reference_id'   => 0,
+                    'reference_id' => 0,
                 ]);
-                $rewardValue  = (string) $pts;
-                $message      = "Selamat! {$pts} poin telah ditambahkan ke akun Anda.";
+                $rewardValue = (string) $pts;
+                $message = "Selamat! {$pts} poin telah ditambahkan ke akun Anda.";
                 $responseData = ['type' => 'bonus_points', 'points_awarded' => $pts, 'new_balance' => ($user->loyalty_points ?? 0)];
 
             } elseif ($rewardType === 'voucher_code') {
                 $voucherId = $foundReward['voucher_id'] ?? null;
-                if (!$voucherId) throw new \Exception('Konfigurasi voucher tidak lengkap.');
+                if (!$voucherId)
+                    throw new \Exception('Konfigurasi voucher tidak lengkap.');
 
                 $voucher = Voucher::find($voucherId);
                 if (!$voucher || !$voucher->isValid()) {
@@ -523,27 +545,27 @@ class LoyaltyController extends Controller
                 // Buat kode unik untuk customer ini
                 $uniqueCode = strtoupper($voucher->code . '_' . Str::random(4));
                 Voucher::create([
-                    'code'         => $uniqueCode,
-                    'description'  => ($voucher->description ?? '') . ' (Loyalty Reward)',
-                    'type'         => $voucher->type,
-                    'value'        => $voucher->value,
+                    'code' => $uniqueCode,
+                    'description' => ($voucher->description ?? '') . ' (Loyalty Reward)',
+                    'type' => $voucher->type,
+                    'value' => $voucher->value,
                     'min_purchase' => $voucher->min_purchase,
                     'max_discount' => $voucher->max_discount,
-                    'max_uses'     => 1,
+                    'max_uses' => 1,
                     'max_per_user' => 1,
-                    'is_active'    => true,
-                    'expires_at'   => now()->addDays(90),
-                    'starts_at'    => now(),
-                    'sku'          => null,
+                    'is_active' => true,
+                    'expires_at' => now()->addDays(90),
+                    'starts_at' => now(),
+                    'sku' => null,
                 ]);
 
-                $rewardValue  = $uniqueCode;
-                $message      = "Selamat! Voucher {$uniqueCode} berhasil diklaim. Gunakan saat checkout (berlaku 90 hari).";
+                $rewardValue = $uniqueCode;
+                $message = "Selamat! Voucher {$uniqueCode} berhasil diklaim. Gunakan saat checkout (berlaku 90 hari).";
                 $responseData = [
-                    'type'         => 'voucher_code',
+                    'type' => 'voucher_code',
                     'voucher_code' => $uniqueCode,
-                    'description'  => $voucher->description,
-                    'value'        => $voucher->type === 'percent'
+                    'description' => $voucher->description,
+                    'value' => $voucher->type === 'percent'
                         ? "{$voucher->value}% OFF"
                         : 'Rp ' . number_format((float) $voucher->value, 0, ',', '.'),
                 ];
@@ -552,12 +574,12 @@ class LoyaltyController extends Controller
             }
 
             LoyaltyClaim::create([
-                'user_id'      => $user->id,
-                'reward_id'    => $validated['reward_id'],
-                'tier_name'    => $foundTier,
-                'reward_type'  => $rewardType,
+                'user_id' => $user->id,
+                'reward_id' => $validated['reward_id'],
+                'tier_name' => $foundTier,
+                'reward_type' => $rewardType,
                 'reward_value' => $rewardValue,
-                'claimed_at'   => now(),
+                'claimed_at' => now(),
             ]);
         });
 
