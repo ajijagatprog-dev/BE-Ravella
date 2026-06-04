@@ -665,7 +665,38 @@ class LoyaltyController extends Controller
                 continue;
             }
 
-            $pointsToAward = max(1, floor($order->total_amount / 10000) * $multiplier);
+            // Get tier multiplier
+            $tierMultiplier = 1.0;
+            $loyaltyEnabled = LoyaltySetting::getValue('loyalty_enabled', '1') === '1';
+            if ($loyaltyEnabled) {
+                $totalSpentByUser = Order::where('user_id', $user->id)
+                    ->where('status', 'DELIVERED')
+                    ->sum('total_amount');
+
+                $tiers = json_decode(LoyaltySetting::getValue('tiers', '[]'), true);
+                if (is_array($tiers)) {
+                    usort($tiers, fn($a, $b) => ($b['min'] ?? 0) - ($a['min'] ?? 0));
+                    $currentTierPerks = [];
+                    foreach ($tiers as $tier) {
+                        if ($totalSpentByUser >= ($tier['min'] ?? 0)) {
+                            $currentTierPerks = $tier['perks'] ?? [];
+                            break;
+                        }
+                    }
+                    foreach ($currentTierPerks as $perk) {
+                        $perkLower = strtolower($perk);
+                        if (str_contains($perkLower, 'point multiplier') || str_contains($perkLower, 'poin multiplier')) {
+                            preg_match('/([\d\.]+)\s*x/i', $perk, $matches);
+                            if (!empty($matches[1])) {
+                                $tierMultiplier = (float) $matches[1];
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            $pointsToAward = max(1, (int) floor(($order->total_amount / 10000) * $multiplier * $tierMultiplier));
 
             DB::transaction(function () use ($user, $order, $pointsToAward) {
                 LoyaltyTransaction::create([

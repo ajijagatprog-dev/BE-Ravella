@@ -414,13 +414,46 @@ class OrderController extends Controller
             }
         }
 
-        // Award loyalty points when order is delivered (uses dynamic multiplier)
+        // Award loyalty points when order is delivered (uses dynamic multiplier + tier multiplier)
         if ($validated['status'] === 'DELIVERED' && $previousStatus !== 'DELIVERED') {
-            $multiplier = (int) \App\Models\LoyaltySetting::getValue('earning_multiplier', '10');
-            $pointsToAward = max(1, floor($order->total_amount / 10000) * $multiplier);
             $user = \App\Models\User::find($order->user_id);
 
             if ($user) {
+                $baseMultiplier = (int) \App\Models\LoyaltySetting::getValue('earning_multiplier', '10');
+                
+                // Get tier multiplier
+                $tierMultiplier = 1.0;
+                $loyaltyEnabled = \App\Models\LoyaltySetting::getValue('loyalty_enabled', '1') === '1';
+                if ($loyaltyEnabled) {
+                    $totalSpentByUser = \App\Models\Order::where('user_id', $user->id)
+                        ->where('status', 'DELIVERED')
+                        ->sum('total_amount');
+
+                    $tiers = json_decode(\App\Models\LoyaltySetting::getValue('tiers', '[]'), true);
+                    if (is_array($tiers)) {
+                        usort($tiers, fn($a, $b) => ($b['min'] ?? 0) - ($a['min'] ?? 0));
+                        $currentTierPerks = [];
+                        foreach ($tiers as $tier) {
+                            if ($totalSpentByUser >= ($tier['min'] ?? 0)) {
+                                $currentTierPerks = $tier['perks'] ?? [];
+                                break;
+                            }
+                        }
+                        foreach ($currentTierPerks as $perk) {
+                            $perkLower = strtolower($perk);
+                            if (str_contains($perkLower, 'point multiplier') || str_contains($perkLower, 'poin multiplier')) {
+                                preg_match('/([\d\.]+)\s*x/i', $perk, $matches);
+                                if (!empty($matches[1])) {
+                                    $tierMultiplier = (float) $matches[1];
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                $pointsToAward = max(1, (int) floor(($order->total_amount / 10000) * $baseMultiplier * $tierMultiplier));
+
                 // Record transaction
                 \App\Models\LoyaltyTransaction::create([
                     'user_id' => $user->id,
