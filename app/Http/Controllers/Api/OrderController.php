@@ -183,6 +183,7 @@ class OrderController extends Controller
             'voucher_code' => $appliedVoucherCode,
             'discount_amount' => $discountAmount,
             'shipping_cost' => $shippingFee,
+            'courier' => $validated['courier'] ?? null,
             'utm_source' => $validated['utm_source'] ?? null,
             'utm_medium' => $validated['utm_medium'] ?? null,
             'utm_campaign' => $validated['utm_campaign'] ?? null,
